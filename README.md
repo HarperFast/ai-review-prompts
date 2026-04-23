@@ -13,18 +13,15 @@ harper/
   common.md            # Harper gotchas that cross versions
   v5.md                # v5-specific (harper package, Resource API v2,
                        # static vs instance dispatch, Fabric deployment)
-  v4.md                # placeholder for v4-era maintenance branches
 repo-type/
-  plugin.md            # npm-published plugins (oauth, …)
-  core.md              # Harper core (data layer, SQL, replication, …)
-  pro.md               # Harper Pro (Fabric features, multi-tenant)
-  manager.md           # central/host managers (fleet orchestration)
-  app.md               # sample and customer apps (integration patterns)
+  plugin.md            # npm-published Harper plugins
 examples/
   claude-review.yml    # reference GitHub Actions workflow
   claude-mention.yml
   claude-issue-to-pr.yml
 ```
+
+New `repo-type` layers land in this repo as they're calibrated against a real repo's PR stream. Until then, consumers compose from `universal` + `harper/*` and add a repo-specific addendum inline in their own workflow's prompt — see the examples.
 
 ## How a consumer workflow composes these
 
