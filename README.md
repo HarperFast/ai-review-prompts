@@ -64,7 +64,7 @@ Check out this repo into a subpath, then concatenate the declared layer files in
       fi
       { cat "$file"; printf '\n\n'; } >> "$OUT"
     done <<< "$LAYERS"
-    { echo 'composed<<EOF'; cat "$OUT"; echo 'EOF'; } >> "$GITHUB_OUTPUT"
+    { echo 'composed<<CLAUDE_SCOPE_EOF'; cat "$OUT"; echo 'CLAUDE_SCOPE_EOF'; } >> "$GITHUB_OUTPUT"
 ```
 
 Inject `${{ steps.scope.outputs.composed }}` into the `prompt:` input of your Claude review step. See `examples/claude-review.yml` for a complete workflow you can copy and adapt.
@@ -83,6 +83,10 @@ Inject `${{ steps.scope.outputs.composed }}` into the `prompt:` input of your Cl
 
 - `HarperFast/skills` is the customer-facing authoring guidance for building on Harper. If a review check here contradicts a skill there, the skill is authoritative for authors; this repo's job is reviewer discipline. When in doubt, link from a layer here to the relevant skill.
 - `HarperFast/ai-review-log` is where PR review findings are logged as GitHub Issues. Separate concern from these prompts — that repo is the output side, this repo is the input side.
+
+## Packaging
+
+The `package.json` here is intentionally marked `"private": true`. This repo is consumed via `actions/checkout` (git) rather than `npm install`, so there's no npm publication. The `package.json` exists only to pin the prettier toolchain used to format the markdown.
 
 ## License
 

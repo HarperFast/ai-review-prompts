@@ -70,6 +70,10 @@ jobs:
         uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Note: `allowed_bots:` is not set here because this workflow
+          # triggers on `issues: labeled`, and labels are applied by people
+          # — not bots opening PRs. See examples/claude-review.yml for why
+          # the review workflow needs the allowlist.
           claude_args: |
             --model claude-sonnet-4-6
             --max-turns 72
@@ -83,8 +87,11 @@ jobs:
 
             Title: ${{ github.event.issue.title }}
 
-            Body:
+            Body (verbatim, including any multi-line content):
+
+            ```
             ${{ github.event.issue.body }}
+            ```
 
             Source: ${{ github.event.issue.html_url }}
 
