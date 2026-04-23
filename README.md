@@ -84,6 +84,31 @@ Inject `${{ steps.scope.outputs.composed }}` into the `prompt:` input of your Cl
 - `HarperFast/skills` is the customer-facing authoring guidance for building on Harper. If a review check here contradicts a skill there, the skill is authoritative for authors; this repo's job is reviewer discipline. When in doubt, link from a layer here to the relevant skill.
 - `HarperFast/ai-review-log` is where PR review findings are logged as GitHub Issues. Separate concern from these prompts — that repo is the output side, this repo is the input side.
 
+## Security: reading the example workflows critically
+
+The example workflows interpolate user-controlled input (comment bodies, issue titles and bodies) into the prompt that drives an agent with `Write`, `Edit`, and shell tools. That is a prompt-injection surface even behind an author-association gate. The examples mitigate the obvious shape by fencing multi-line bodies in code blocks and keeping the tool allowlist tight, but **fences are cosmetic — a determined commenter can close them and inject what reads like template-author instructions.** Consumers should adopt these workflows with that in mind.
+
+### Vectors to think about
+
+- **Unfenced / unbounded user input in the prompt.** Comment body, issue title, issue body all arrive as attacker-shaped strings. The examples wrap them in code fences or inline backticks, but the fence can be escaped. The real defense is the author gate combined with a tight tool allowlist — not delimiter syntax.
+- **The tool allowlist IS a security boundary.** Every entry there is a potential RCE primitive if an injection succeeds. The examples deliberately OMIT `Bash(npx:*)` (lets the agent run arbitrary published packages) and use `Bash(npm install)` (bare, no-args) rather than `Bash(npm install:*)` (arbitrary packages) for that reason. If you add either back, understand what you're accepting.
+- **Indirect injection via PR contents.** The review workflow reads agent context files (`CLAUDE.md`, `AGENTS.md`, etc.) from the PR's own checkout. A malicious PR editing those files can steer the reviewer's output. The review-side tool scope is read-only so blast radius is bounded to a misleading review, but consumers who broaden the review workflow's tools should revisit this.
+- **`GITHUB_TOKEN` is subprocess-readable.** GitHub auto-redacts it from logs, but any command the agent runs can read it from its environment. The token scope is whatever the workflow's `permissions:` block grants — keep that minimal per workflow.
+- **Branch protection is load-bearing.** The "Must NOT push to main" guidance in the issue-to-pr example is a soft guardrail; the actual guarantee comes from GitHub branch protection + required reviews on your default and release branches. Enable those.
+
+### What's NOT sufficient alone
+
+- The `author_association` gate — it narrows the population but doesn't eliminate compromised or distracted org-member accounts.
+- Code fences around interpolated user content — visual hygiene, not a boundary.
+- The `Must NOT` section of the prompt — soft prompt guardrail, trivial to override with a well-placed injected instruction.
+
+### Minimum checklist before you enable these workflows on your repo
+
+1. Copy the example verbatim; audit the `--allowedTools` list and prune anything you don't need.
+2. Enable branch protection on `main` / `release_*` / `v*.x` with required reviews.
+3. Confirm `permissions:` in each workflow is the tightest that lets the job succeed.
+4. Decide your org-member trust model explicitly. If you don't trust every OWNER / MEMBER / COLLABORATOR to avoid accidentally `@claude run npx …`-ing something, tighten the gate further (named-user allowlist, separate team).
+
 ## Packaging
 
 The `package.json` here is intentionally marked `"private": true`. This repo is consumed via `actions/checkout` (git) rather than `npm install`, so there's no npm publication. The `package.json` exists only to pin the prettier toolchain used to format the markdown.

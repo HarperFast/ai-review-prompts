@@ -85,7 +85,18 @@ jobs:
           claude_args: |
             --model claude-opus-4-7
             --max-turns 48
-            --allowedTools "Read,Write,Edit,Grep,Glob,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checkout:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(npm install:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*),Bash(npx:*)"
+            # Tool allowlist — keep tight. Every entry here is a potential
+            # prompt-injection RCE primitive if a malicious input steers the
+            # agent toward it. Notably ABSENT by design:
+            #   * `Bash(npx:*)` — lets an injected prompt run arbitrary
+            #     published packages (the biggest RCE surface). If your
+            #     workflow genuinely needs a specific npx command, add it
+            #     explicitly — e.g. `Bash(npx prettier:*)`.
+            #   * `Bash(npm install:*)` — allows arbitrary package install.
+            #     Use the no-arg form `Bash(npm install)` when you need to
+            #     regenerate a lockfile from an edited package.json; it's
+            #     bounded to what's already declared there.
+            --allowedTools "Read,Write,Edit,Grep,Glob,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checkout:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(npm install),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*)"
           # In agent mode the action can use the triggering comment as the
           # prompt, but we inline it explicitly below to guarantee the agent
           # always has PR/issue number, URL, and the commenter's exact
@@ -123,9 +134,10 @@ jobs:
 
             ## Conventions
 
-            Read `CLAUDE.md` in the repo root first. Its conventions and
-            gotchas apply to any code you write. Match the repo's existing
-            style rather than introducing a new one.
+            Read the repo's agent context files first (commonly
+            `CLAUDE.md`, `AGENTS.md`, or similar at the repo root). Their
+            conventions and gotchas apply to any code you write. Match the
+            repo's existing style rather than introducing a new one.
 
             For any change touching deployment patterns, docs about
             production, or Harper best practices, also consult the

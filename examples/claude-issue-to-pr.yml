@@ -77,7 +77,10 @@ jobs:
           claude_args: |
             --model claude-sonnet-4-6
             --max-turns 72
-            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(npm install:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*),Bash(npx:*)"
+            # Tool allowlist — keep tight. See the allowlist comment in
+            # examples/claude-mention.yml for why `Bash(npx:*)` is absent
+            # and why `Bash(npm install)` is intentionally no-arg.
+            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(npm install),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*)"
           prompt: |
             You were invoked because issue #${{ github.event.issue.number }}
             on ${{ github.repository }} was labeled
@@ -85,7 +88,7 @@ jobs:
 
             ## The ask
 
-            Title: ${{ github.event.issue.title }}
+            Title: `${{ github.event.issue.title }}`
 
             Body (verbatim, including any multi-line content):
 
@@ -116,8 +119,9 @@ jobs:
 
             ## Conventions
 
-            Read `CLAUDE.md` in the repo root. Its conventions and
-            gotchas apply. Match the repo's style.
+            Read the repo's agent context files first (commonly
+            `CLAUDE.md`, `AGENTS.md`, or similar at the repo root). Their
+            conventions and gotchas apply. Match the repo's style.
 
             For docs and deployment-related changes — especially doc
             issues like env-var / config / production-setup guidance —
