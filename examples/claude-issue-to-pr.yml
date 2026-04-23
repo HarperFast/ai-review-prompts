@@ -1,0 +1,186 @@
+# Example GitHub Actions workflow. Labeling an issue with
+# `claude-fix:<type>` kicks Claude off to investigate, make a focused
+# change on a new branch, and open a PR linking back to the issue.
+# Copy to `.github/workflows/` and adapt the sections marked TODO.
+#
+# Requires:
+#   - `ANTHROPIC_API_KEY` repository secret
+#   - Labels named `claude-fix:typo`, `claude-fix:docs`, etc. (create these
+#     in your repo; the label name is what triggers the workflow)
+#   - All action `uses:` pinned to a commit SHA
+name: Claude Issue to PR
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: claude-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  work:
+    # Only trigger for `claude-fix:*` labels AND when the issue was
+    # opened by an org member or collaborator. Labels added to issues
+    # opened by outside contributors are ignored so a mislabeling by
+    # someone outside the team doesn't spin up a run.
+    if: >-
+      startsWith(github.event.label.name, 'claude-fix:') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+      github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@<pinned-sha> # TODO: pin, e.g. v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Clone shared Harper skills
+        # Optional — only needed if your prompt references skills rules.
+        uses: actions/checkout@<pinned-sha> # TODO: pin
+        with:
+          repository: HarperFast/skills
+          ref: <pinned-sha-or-tag>
+          path: .harper-skills
+
+      # REPO-SPECIFIC: include whichever runtime setup steps your repo needs.
+      - name: Setup Node.js
+        uses: actions/setup-node@<pinned-sha> # TODO: pin
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@<pinned-sha> # TODO: pin
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Claude (agent mode)
+        id: claude-agent
+        uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 72
+            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(npm install:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*),Bash(npx:*)"
+          prompt: |
+            You were invoked because issue #${{ github.event.issue.number }}
+            on ${{ github.repository }} was labeled
+            `${{ github.event.label.name }}`.
+
+            ## The ask
+
+            Title: ${{ github.event.issue.title }}
+
+            Body:
+            ${{ github.event.issue.body }}
+
+            Source: ${{ github.event.issue.html_url }}
+
+            ## Label-scoped behavior
+
+            The label suffix tells you how much latitude you have:
+
+            - `claude-fix:typo` — a single-file typo, prose tweak, or
+              tiny doc fix. Should be one or two lines changed.
+            - `claude-fix:docs` — a documentation update. Code should
+              not be touched unless the doc is literally a code comment.
+            - `claude-fix:deps` — a dependency version bump. Update
+              `package.json` and regenerate the lockfile via
+              `npm install` + verify `npm ci` works.
+            - `claude-fix:bug` — a focused bug fix with at least one
+              test that fails before the fix and passes after.
+
+            Any ask that requires judgment beyond the label's scope —
+            new public API, architecture changes, cross-cutting
+            refactors — is OUT of scope. In that case, comment on the
+            issue explaining what you see and do NOT open a PR.
+
+            ## Conventions
+
+            Read `CLAUDE.md` in the repo root. Its conventions and
+            gotchas apply. Match the repo's style.
+
+            For docs and deployment-related changes — especially doc
+            issues like env-var / config / production-setup guidance —
+            also consult the shared Harper skills at
+            `.harper-skills/harper-best-practices/rules/` (if you cloned
+            skills above). In particular,
+            `.harper-skills/harper-best-practices/rules/deploying-to-harper-fabric.md`
+            is authoritative for Harper's deployment model (Fabric).
+            Do NOT invent generic production patterns (systemd units,
+            raw Kubernetes, cloud secrets managers, arbitrary .env
+            recommendations) without first checking whether a
+            Harper-specific path exists in those rules. If the skills
+            don't cover the ask and the issue body doesn't specify,
+            comment on the issue asking for clarification rather than
+            guessing.
+
+            ## Documentation scope boundary
+
+            Harper maintains authoritative documentation at
+            https://docs.harperdb.io covering core, pro, and fabric. This
+            repo's docs should NOT re-explain Harper mechanics that the
+            Harper docs already cover — they drift out of sync when the
+            Harper docs update.
+
+            When writing or revising docs here:
+
+            - Document what's specific to THIS component — env var names,
+              config shape, setup flow, integration API.
+            - For anything not component-specific (deployment mechanics,
+              runtime env var handling, Fabric configuration, core Harper
+              behavior, SQL, replication), LINK to the Harper docs rather
+              than re-explaining.
+
+            This is a general rule, not specific to any one area.
+
+            ## Process
+
+            1. Create a branch named `claude/fix-${{ github.event.issue.number }}`
+               (or append `-<short-desc>` if useful).
+            2. Make the change scoped to the label.
+            3. Validate, scaling to the kind of change you made.
+
+               REPO-SPECIFIC: flag any files that LOOK doc-only but aren't.
+               For a typical Harper plugin, `config.yaml` is NOT doc-only —
+               it can hold plugin entry points and runtime defaults. Any
+               change that touches `config.yaml` requires the full
+               validation path regardless of the `claude-fix:*` label.
+
+               - `claude-fix:typo` / `claude-fix:docs` (doc-only
+                 changes to `*.md`, `docs/**`, or `package.json`
+                 keyword/description fields): run
+                 `npm run format:check` and `npm run lint`. Skip
+                 `npm run build` / `npm test` / `bun test` — they
+                 are not affected and waste turns.
+               - `claude-fix:deps` / `claude-fix:bug` or any change
+                 that touches code or `config.yaml`: run
+                 `npm run build && npm run lint && npm run format:check && npm test`
+                 and `bun test`. Fix anything that fails.
+
+               When in doubt, err toward the fuller validation.
+            4. Commit with a descriptive message.
+            5. Push the branch and open a PR via `gh pr create` with a
+               body that says `Closes #${{ github.event.issue.number }}`.
+            6. Post a comment on the original issue linking to the PR.
+
+            ## Must NOT
+
+            - Do NOT push to `main` or any `release_*` / `v*.x` branch.
+            - Do NOT use REQUEST_CHANGES or APPROVE on any PR.
+            - Do NOT open a PR when the ask is out of scope — comment
+              and stop.
+            - Do NOT commit secrets, credentials, or large generated
+              artifacts (e.g. `node_modules/`, coverage output).

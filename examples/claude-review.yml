@@ -1,0 +1,178 @@
+# Example GitHub Actions workflow for AI-powered PR review on
+# Harper-ecosystem repositories. Copy to `.github/workflows/` and adapt
+# the sections marked TODO / REPO-SPECIFIC.
+#
+# Requires:
+#   - `ANTHROPIC_API_KEY` repository secret
+#   - All action `uses:` pinned to a commit SHA (security / supply-chain
+#     hygiene — update the SHAs yourself when you adopt this template)
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # REPO-SPECIFIC: adjust the gate to match who should get auto-reviewed.
+    # This gate admits PRs from org members/collaborators and from our own
+    # issue-to-PR bot (claude[bot]). External human PRs are not auto-reviewed
+    # — opt them in via an @claude mention (separate workflow) if you have one.
+    if: >-
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+      github.event.pull_request.author_association)
+      || github.event.pull_request.user.login == 'claude[bot]'
+    runs-on: ubuntu-latest
+    # 15 gives headroom without letting a runaway loop burn forever
+    # (claude-code-action's --max-turns is the real cost ceiling).
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write # required by claude-code-action even with API-key auth
+    env:
+      # REPO-SPECIFIC: declare the layered review scope. Order matters
+      # (most-general first, most-specific last). See
+      # https://github.com/HarperFast/ai-review-prompts for available layers.
+      REVIEW_LAYERS: |
+        universal
+        harper/common
+        harper/v5
+        repo-type/plugin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@<pinned-sha> # TODO: pin, e.g. v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Clone shared Harper skills
+        # Optional. HarperFast/skills is the customer-facing authoring guidance
+        # for Harper. A review layer may reference a skill file; having the
+        # skills on disk lets the reviewer drill in if useful. Drop this step
+        # if none of your layers reference skills.
+        uses: actions/checkout@<pinned-sha> # TODO: pin, e.g. v4.3.1
+        with:
+          repository: HarperFast/skills
+          ref: <pinned-sha-or-tag> # TODO: pin — don't track main
+          path: .harper-skills
+
+      - name: Clone review prompts
+        uses: actions/checkout@<pinned-sha> # TODO: pin, e.g. v4.3.1
+        with:
+          repository: HarperFast/ai-review-prompts
+          ref: <pinned-sha-or-tag> # TODO: pin — don't track main
+          path: .ai-review-prompts
+
+      - name: Compose review scope from layers
+        id: scope
+        env:
+          LAYERS: ${{ env.REVIEW_LAYERS }}
+        run: |
+          set -euo pipefail
+          OUT=/tmp/composed-scope.md
+          : > "$OUT"
+          while IFS= read -r raw_layer; do
+            layer="$(printf '%s' "$raw_layer" | awk '{$1=$1;print}')"
+            [ -z "$layer" ] && continue
+            file=".ai-review-prompts/${layer}.md"
+            if [ ! -f "$file" ]; then
+              echo "::warning::Review layer '$layer' not found at $file; skipping."
+              continue
+            fi
+            { cat "$file"; printf '\n\n'; } >> "$OUT"
+          done <<< "$LAYERS"
+
+          BYTES=$(wc -c < "$OUT")
+          echo "Composed ${BYTES} bytes from review layers"
+          if [ "$BYTES" -eq 0 ]; then
+            echo "::error::Composed review scope is empty — all layers missing or unreadable."
+            exit 1
+          fi
+
+          {
+            echo 'composed<<CLAUDE_SCOPE_EOF'
+            cat "$OUT"
+            echo 'CLAUDE_SCOPE_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Claude review
+        id: claude-review
+        uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Allow specific bot actors to be reviewed. The job-level `if:` gate
+          # above lets the workflow start; claude-code-action has its own
+          # bot-actor check that refuses unless the bot is listed. Use a
+          # specific slug rather than '*' so only the bots you expect pass.
+          allowed_bots: claude
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 24
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            The PR branch is already checked out in the current working directory.
+
+            Read `CLAUDE.md` in the repo root first — it has the project
+            overview, conventions, and repo-specific gotchas. Then apply
+            the layered review scope below.
+
+            ## Tools
+
+            For file inspection use the `Read`, `Grep`, and `Glob` tools.
+            Do NOT use `cat`, `head`, `tail`, `grep`, `ls`, or `find`
+            via Bash — those commands are not allowed and waste turns.
+            Do NOT run `bun test`, `npm test`, or any other script
+            that executes PR code — the PR's tests are already checked
+            separately.
+
+            The only allowed Bash commands are:
+            - `gh pr view` / `gh pr diff` — inspect the PR (already run
+              at start, you can re-invoke if needed)
+            - `gh pr comment` — post the final review comment
+
+            Do NOT write files during the review — not to `.claude-pr/`,
+            not to `/tmp/`, not anywhere. The `Write` and `Edit` tools
+            are not allowed. If you want to organize notes, keep them
+            in-memory and assemble the final PR comment; saving
+            intermediate drafts to disk wastes turns on permission
+            denials.
+
+            Shared Harper best-practices are mirrored on disk at
+            `.harper-skills/harper-best-practices/rules/*.md` if a layer
+            references them and you want to drill into the customer-facing
+            source.
+
+            ## Layered review scope
+
+            The sections below are composed from the layers declared in
+            `REVIEW_LAYERS`. They are the authoritative review checklist —
+            any repo-specific bullets further down stack ON TOP of them,
+            they do not replace them.
+
+            ${{ steps.scope.outputs.composed }}
+
+            ## Repo-specific checks
+
+            REPO-SPECIFIC: replace or remove this section. List anything not
+            covered by the shared layers that reviewers should check on this
+            repo's PRs. Keep it tight — the layered scope above is most of
+            the signal; this section is for genuinely repo-unique semantics.
+
+            ## How to post the review
+
+            - Use `gh pr comment` for the single consolidated top-level
+              summary comment.
+            - Use `mcp__github_inline_comment__create_inline_comment`
+              (with `confirmed: true`) for specific code-line annotations.
+            - Only post GitHub comments — do NOT submit review text as SDK
+              messages.
+
+            Cap the review at 10 findings.
