@@ -4,7 +4,7 @@ Layered prompt content for AI-powered code review on Harper-ecosystem repositori
 
 > **Using the workflows in a repo that has them installed?** See [`USAGE.md`](./USAGE.md) for the day-to-day reference — what `@claude` can do, what labels trigger what, how to get a PR reviewed.
 
-This README is for workflow *authors / maintainers*: what the layers are, how consumers compose them, and the security trade-offs.
+This README is for workflow _authors / maintainers_: what the layers are, how consumers compose them, and the security trade-offs.
 
 Each layer is a short markdown document that reads as **review guidance**. Workflows compose a selection of layers into a single prompt, so a reviewer bot gets exactly the checklist relevant to the repo it's reviewing — architecture + security for every PR, Harper-version conventions for Harper repos, and repo-type-specific rules on top (plugin, core, app, etc.).
 

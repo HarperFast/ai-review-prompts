@@ -89,12 +89,12 @@ Type `@claude` as the **first non-whitespace token** of a PR or issue comment, f
 
 Apply one of these labels to an issue, and Claude opens a PR linking back to it.
 
-| Label | Scope | What's appropriate |
-|---|---|---|
-| `claude-fix:typo` | 1–2 line prose fix in a single file | Spelling, grammar, punctuation |
-| `claude-fix:docs` | Documentation updates | `*.md` changes, `package.json` keyword/description edits, doc comments in code |
-| `claude-fix:deps` | Dependency version bump | Update `package.json`, regenerate lockfile, verify `npm ci` |
-| `claude-fix:bug` | Focused bug fix | Code change with at least one test that fails before, passes after |
+| Label             | Scope                               | What's appropriate                                                             |
+| ----------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| `claude-fix:typo` | 1–2 line prose fix in a single file | Spelling, grammar, punctuation                                                 |
+| `claude-fix:docs` | Documentation updates               | `*.md` changes, `package.json` keyword/description edits, doc comments in code |
+| `claude-fix:deps` | Dependency version bump             | Update `package.json`, regenerate lockfile, verify `npm ci`                    |
+| `claude-fix:bug`  | Focused bug fix                     | Code change with at least one test that fails before, passes after             |
 
 The label's suffix is a scope contract. Asks that would require judgment beyond it — new public API, architecture changes, cross-cutting refactors — are **refused**: the agent comments on the issue explaining what it sees and does NOT open a PR.
 
