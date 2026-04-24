@@ -43,9 +43,11 @@ jobs:
 
     steps:
       - name: Checkout
+        # Default shallow fetch (depth 1). The agent can commit and push on
+        # a shallow clone; `git log` / `git blame` aren't reached for by
+        # the current prompt. Bump to a deeper fetch only if you direct the
+        # agent at history lookups.
         uses: actions/checkout@<pinned-sha> # TODO: pin, e.g. v4.3.1
-        with:
-          fetch-depth: 0
 
       - name: Clone shared Harper skills
         # Optional — only needed if your prompt references a skill file.
