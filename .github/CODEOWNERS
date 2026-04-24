@@ -1,0 +1,10 @@
+# CODEOWNERS is not the most intuitive file
+# Review the docs before modifying: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Importantly, **the last matching pattern takes precedence**
+
+# By default, everything must be reviewed by someone in the core engineering team
+*          @HarperFast/developers
+
+# Workflow-adjacent paths require devops review too
+/.github/  @HarperFast/developers @HarperFast/devops
+/examples/ @HarperFast/developers @HarperFast/devops
