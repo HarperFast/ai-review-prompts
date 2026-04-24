@@ -123,6 +123,34 @@ The label's suffix is a scope contract. Asks that would require judgment beyond 
 
 ---
 
+## The feedback loop (how this gets better)
+
+The review prompts aren't hard-coded truth — they're a living checklist that gets sharper with every PR they run on. Two paths for that:
+
+### Where review outcomes get logged
+
+Every completed review posts a follow-up entry in `HarperFast/ai-review-log` (private, internal-only today). Each entry captures:
+
+- The repo and PR being reviewed, the model used, and the review job status
+- The finding count (or "no blockers") in the title
+- The verbatim review body as an issue body, labeled `repo:<short>`, `verdict:pending`, `phase:baseline`
+
+This is what gets swept periodically to see how the bot's judgment is holding up — are findings actually blocker-worthy? Is the review missing things we later catch in human review? Is a layer rule too loose or too strict?
+
+**Why the log repo is internal for now:** logged issue bodies include code snippets from private-repo PRs (Harper core, harper-pro, etc.). Making the log public would leak those. The public half of the picture is this repo — the prompts themselves — where anyone can see what the bot is being told to check.
+
+**Consumers can skip the log step.** The `AI_REVIEW_LOG_TOKEN` secret is optional. If unset, the review step runs but the logging step exits gracefully. Reviews still post on the PR itself; they just don't feed the central tracker.
+
+### How to report / contribute to the prompts
+
+If the bot's output is wrong in a consistent way — false-positive finding, real issue it keeps missing, rule that reads too strictly on a repo-type it wasn't calibrated against — that's signal for a prompt change.
+
+- **Open an issue on [`HarperFast/ai-review-prompts`](https://github.com/HarperFast/ai-review-prompts/issues)** with a link to the specific PR review that shows the misfire. Internal `ai-review-log` issue links are fine too — we'll triage.
+- **PRs are welcome.** The prompts are short markdown files; most improvements are one-to-three-bullet edits on an existing layer. The PR-to-prompt-to-review feedback loop is itself reviewed by the bot (this repo has the workflows installed), so you'll see the new rules applied to your own PR before they affect anyone else.
+- **New repo-type layers** (e.g. an eventual `repo-type/core.md` for Harper core, or `repo-type/app.md` for customer apps) land here once they've been through enough real PR rounds in that repo type to be stable. Until then, repo-specific bullets live inline in the consumer repo's `claude-review.yml`.
+
+---
+
 ## Per-repo setup (maintainer checklist)
 
 1. **Secrets:** add `ANTHROPIC_API_KEY` as a repository secret. Add `AI_REVIEW_LOG_TOKEN` if the repo should log reviews to `HarperFast/ai-review-log` (optional; skipped gracefully if unset).
