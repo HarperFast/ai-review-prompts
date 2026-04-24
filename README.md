@@ -2,6 +2,10 @@
 
 Layered prompt content for AI-powered code review on Harper-ecosystem repositories. Consumed by GitHub Actions workflows that run [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action) (or equivalent) against pull requests.
 
+> **Using the workflows in a repo that has them installed?** See [`USAGE.md`](./USAGE.md) for the day-to-day reference — what `@claude` can do, what labels trigger what, how to get a PR reviewed.
+
+This README is for workflow _authors / maintainers_: what the layers are, how consumers compose them, and the security trade-offs.
+
 Each layer is a short markdown document that reads as **review guidance**. Workflows compose a selection of layers into a single prompt, so a reviewer bot gets exactly the checklist relevant to the repo it's reviewing — architecture + security for every PR, Harper-version conventions for Harper repos, and repo-type-specific rules on top (plugin, core, app, etc.).
 
 ## Layout
@@ -64,7 +68,10 @@ Check out this repo into a subpath, then concatenate the declared layer files in
       fi
       { cat "$file"; printf '\n\n'; } >> "$OUT"
     done <<< "$LAYERS"
-    { echo 'composed<<CLAUDE_SCOPE_EOF'; cat "$OUT"; echo 'CLAUDE_SCOPE_EOF'; } >> "$GITHUB_OUTPUT"
+    # Random heredoc delimiter — collision-proof against any content a
+    # future layer file might include.
+    DELIM="EOF_$(openssl rand -hex 16)"
+    { echo "composed<<${DELIM}"; cat "$OUT"; echo "${DELIM}"; } >> "$GITHUB_OUTPUT"
 ```
 
 Inject `${{ steps.scope.outputs.composed }}` into the `prompt:` input of your Claude review step. See `examples/claude-review.yml` for a complete workflow you can copy and adapt.
@@ -88,19 +95,31 @@ Inject `${{ steps.scope.outputs.composed }}` into the `prompt:` input of your Cl
 
 The example workflows interpolate user-controlled input (comment bodies, issue titles and bodies) into the prompt that drives an agent with `Write`, `Edit`, and shell tools. That is a prompt-injection surface even behind an author-association gate. The examples mitigate the obvious shape by fencing multi-line bodies in code blocks and keeping the tool allowlist tight, but **fences are cosmetic — a determined commenter can close them and inject what reads like template-author instructions.** Consumers should adopt these workflows with that in mind.
 
+### Gates the examples put in place
+
+These are the boundaries you can actually count on — explicit mechanisms, not soft guardrails:
+
+- **`author_association` gate** at the job level — `OWNER` / `MEMBER` / `COLLABORATOR` only. Blocks external comments from spawning a runner. Also `allowed_bots: claude` on the review workflow so AI-authored PRs get reviewed by the same pipeline.
+- **First-token `@claude` rule** on the mention workflow. A shell step parses the comment body and only proceeds if `@claude` is the first non-whitespace token (word-boundary after). Rules out `@claudette`, inline prose mentions, and quoted replies (`> @claude …`) where the `@claude` is addressing a human. Subsequent workflow steps guard on its output.
+- **Tool allowlist** — individually scoped. `Bash(npx:*)` is absent (biggest RCE primitive); read-only git subcommands on review; broader `Bash(git:*)` on mention/issue-to-pr bounded by branch protection rather than allowlist shape.
+- **Branch protection** on `main` / `release_*` / `v*.x` — load-bearing. The "don't push to main" prompt instruction is a soft guardrail; branch protection is the real one.
+
 ### Vectors to think about
 
-- **Unfenced / unbounded user input in the prompt.** Comment body, issue title, issue body all arrive as attacker-shaped strings. The examples wrap them in code fences or inline backticks, but the fence can be escaped. The real defense is the author gate combined with a tight tool allowlist — not delimiter syntax.
-- **The tool allowlist IS a security boundary.** Every entry there is a potential RCE primitive if an injection succeeds. The examples deliberately OMIT `Bash(npx:*)` (lets the agent run arbitrary published packages) and use `Bash(npm install)` (bare, no-args) rather than `Bash(npm install:*)` (arbitrary packages) for that reason. If you add either back, understand what you're accepting.
-- **Indirect injection via PR contents.** The review workflow reads agent context files (`CLAUDE.md`, `AGENTS.md`, etc.) from the PR's own checkout. A malicious PR editing those files can steer the reviewer's output. The review-side tool scope is read-only so blast radius is bounded to a misleading review, but consumers who broaden the review workflow's tools should revisit this.
+- **Unfenced / unbounded user input in the prompt.** Comment body, issue title, issue body all arrive as attacker-shaped strings. The examples wrap them in code fences or inline backticks, but the fence can be escaped. Real defense is the author gate + first-token rule + tight tool allowlist — not delimiter syntax.
+- **The tool allowlist IS a security boundary — but not a complete one.** Every entry is a potential RCE primitive if an injection succeeds. The examples deliberately OMIT `Bash(npx:*)` (lets the agent run arbitrary published packages). They TIGHTEN `Bash(npm install:*)` → `Bash(npm install)` (no-arg). **Important caveat:** no-arg `Bash(npm install)` blocks `npm install @attacker/<pkg>` but does NOT close the `Write(package.json)` + `postinstall` + bare `npm install` chain. A successful injection can edit `package.json` to add a malicious `postinstall` script, then invoke bare `npm install` to execute it with `GITHUB_TOKEN` and the `claude[bot]` installation token reachable from the subprocess. Mitigation options (not in the default examples, but supported):
+  - Add `.npmrc` with `ignore-scripts=true` to the repos that install these workflows — blocks the postinstall path at the npm-config level.
+  - Drop `Bash(npm install)` from the allowlist entirely; defer installs to a separate CI job the agent can't trigger.
+  - Split issue-to-pr into read-only research + narrow-write commit steps (future follow-up).
+- **Indirect injection via PR contents.** The review workflow reads agent context files (`CLAUDE.md`, `AGENTS.md`, etc.) from the PR's own checkout. A malicious PR editing those files can steer the reviewer's output. The review-side tool scope is read-only so blast radius is bounded to a misleading review; consumers who broaden the review workflow's tools should revisit this. The review prompt explicitly tells the agent to flag such edits as findings rather than honor them.
 - **`GITHUB_TOKEN` is subprocess-readable.** GitHub auto-redacts it from logs, but any command the agent runs can read it from its environment. The token scope is whatever the workflow's `permissions:` block grants — keep that minimal per workflow.
-- **Branch protection is load-bearing.** The "Must NOT push to main" guidance in the issue-to-pr example is a soft guardrail; the actual guarantee comes from GitHub branch protection + required reviews on your default and release branches. Enable those.
 
 ### What's NOT sufficient alone
 
 - The `author_association` gate — it narrows the population but doesn't eliminate compromised or distracted org-member accounts.
+- The first-token `@claude` rule — strengthens the mention gate but doesn't replace the author-association check; they stack.
 - Code fences around interpolated user content — visual hygiene, not a boundary.
-- The `Must NOT` section of the prompt — soft prompt guardrail, trivial to override with a well-placed injected instruction.
+- The `Must NOT push to main` section of the prompt — soft prompt guardrail, trivially overridden by a well-placed injected instruction. Branch protection does the real work.
 
 ### Minimum checklist before you enable these workflows on your repo
 
