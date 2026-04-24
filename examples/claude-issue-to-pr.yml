@@ -20,12 +20,16 @@ concurrency:
 
 jobs:
   work:
-    # Only trigger for `claude-fix:*` labels AND when the issue was
-    # opened by an org member or collaborator. Labels added to issues
-    # opened by outside contributors are ignored so a mislabeling by
-    # someone outside the team doesn't spin up a run.
+    # Only trigger for specific labels AND when the issue was opened by
+    # an org member or collaborator. Labels added to issues opened by
+    # outside contributors are ignored so a mislabeling by someone
+    # outside the team doesn't spin up a run.
+    #
+    # Use an EXPLICIT WHITELIST of labels, not `startsWith('claude-fix:')`
+    # — prefix matching admits typoed variants (`claude-fix:typos`,
+    # `claude-fix:foo`) that the agent will waste turns interpreting.
     if: >-
-      startsWith(github.event.label.name, 'claude-fix:') &&
+      contains(fromJSON('["claude-fix:typo","claude-fix:docs","claude-fix:deps","claude-fix:bug"]'), github.event.label.name) &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
       github.event.issue.author_association)
     runs-on: ubuntu-latest
@@ -80,8 +84,10 @@ jobs:
             --model claude-sonnet-4-6
             --max-turns 72
             # Tool allowlist — keep tight. See the allowlist comment in
-            # examples/claude-mention.yml for why `Bash(npx:*)` is absent
-            # and why `Bash(npm install)` is intentionally no-arg.
+            # examples/claude-mention.yml for why `Bash(npx:*)` is absent,
+            # why `Bash(npm install)` (no-arg) is partial mitigation only,
+            # and why the real guardrails live in branch protection + the
+            # author_association gate rather than the allowlist.
             --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(npm install),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*)"
           prompt: |
             You were invoked because issue #${{ github.event.issue.number }}
