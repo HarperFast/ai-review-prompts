@@ -76,5 +76,5 @@ If a finding doesn't have concrete impact on correctness, security, contract, or
 **How to post:**
 
 - Structured format: `### <N>. <title>` + `**File:** path:line` + `**What:** …` + `**Why it matters:** …` + `**Suggested fix:** …`.
-- If zero blockers: lead with "No blockers found." A short "here's what I traced" summary is welcome during calibration — it lets maintainers spot-check whether the bot reasoned through the right surfaces vs. hand-waved a pass. Keep it tight: one line per surface verified, not a full re-derivation.
+- **PR comments stay concise** — every reader pays the cost. If zero blockers, the PR comment is **one sentence** (e.g. `Reviewed; no blockers found.`). The "what I traced" calibration summary — one line per surface verified, no full re-derivation — belongs in the workflow's **log surface** (a per-PR issue threaded by a `Log review to <log-repo>` step) when one is wired. Workflows without a log surface MAY keep the tracing on the PR as a calibration aid, but only until a log surface is added.
 - Never `REQUEST_CHANGES` or `APPROVE` during calibration — comments only.
