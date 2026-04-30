@@ -2,6 +2,25 @@
 
 Applies to every PR regardless of the repo. Read this first and apply everything below to the diff you're reviewing.
 
+## Before reviewing: read the prior conversation
+
+A new review run usually fires because the author pushed in response to feedback (yours or human reviewers'). Treat the existing PR conversation as ground truth before deciding what to flag — re-raising a finding a maintainer already dismissed is the fastest way to teach the team to ignore the bot.
+
+What to read:
+
+- **Top-level PR comments**: `gh pr view <N> --json comments` — includes any prior `claude` review comment and human responses.
+- **Inline review threads**: `gh pr view <N> --json reviewThreads` — per-line conversations. `isResolved: true` is settled; maintainer replies like "won't fix" / "intentional" / "by design" are explicit dismissal signals.
+- **Commit messages since the last review**: `git log <prior-claude-comment-sha>..HEAD --oneline` — the author's own framing of what changed and why. A commit titled `address review feedback` is the author saying they responded to your concerns.
+
+What to do with what you see:
+
+- **Don't re-raise dismissed findings.** If a maintainer marked a finding as intentional or won't-fix, drop it from this run — even if the underlying code still matches the original concern. Trust the human signal; re-raise only when circumstances genuinely changed (different file, different context, materially altered surrounding code).
+- **Mark resolved findings as resolved.** If the new push addresses a prior finding, don't re-flag. If the line moved but the concern still applies, flag briefly with a reference back to the prior thread instead of restating the full case.
+- **Use the author's commit messages as intent signal.** Verify their stated change matches the diff before crediting it; "addressed feedback" is a claim, not proof.
+- **New code introduced in this push is fair game** — it has no prior conversation to weigh.
+
+This is per-PR memory. Cross-PR pattern learning happens via the workflow's log surface (or a downstream KB), not here.
+
 ## Architecture
 
 - **API contracts.** Does this change alter a public API (signature, return shape, error type, side effects)? Is the alteration intentional? Is it documented?
