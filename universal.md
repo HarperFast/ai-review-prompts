@@ -14,9 +14,11 @@ What to read:
 
 What to do with what you see:
 
-- **Don't re-raise dismissed findings.** If a maintainer marked a finding as intentional or won't-fix, drop it from this run — even if the underlying code still matches the original concern. Trust the human signal; re-raise only when circumstances genuinely changed (different file, different context, materially altered surrounding code).
+- **Inline-thread resolution state is authoritative.** Each thread in `gh pr view --json reviewThreads` carries `isResolved: true|false`. A thread with `isResolved: true` is settled — do NOT re-raise the same finding even if the underlying line still matches the original concern. The maintainer made a judgment call; respect it. A thread with `isResolved: false` carrying maintainer replies like "won't fix" / "by design" / "intentional" / "I disagree" is **context, not appeal grounds**. Drop the finding from this run.
+- **Re-raise only when circumstances genuinely worsened.** Narrow exceptions: the surrounding code changed in a way that materially elevates the original concern, OR the same code path now appears in a new file the PR added. The bar is "the dismissal no longer applies because the situation changed," not "I still think I was right."
+- **Top-level dismissals apply broadly.** If a maintainer's top-level PR comment dismisses a category ("don't worry about X in this PR"), apply it across the run, even where the dismissal isn't on a specific thread.
 - **Mark resolved findings as resolved.** If the new push addresses a prior finding, don't re-flag. If the line moved but the concern still applies, flag briefly with a reference back to the prior thread instead of restating the full case.
-- **Use the author's commit messages as intent signal.** Verify their stated change matches the diff before crediting it; "addressed feedback" is a claim, not proof.
+- **Use the author's commit messages as intent signal, not proof.** "Address review feedback" is a claim — verify against the diff before crediting it.
 - **New code introduced in this push is fair game** — it has no prior conversation to weigh.
 
 This is per-PR memory. Cross-PR pattern learning happens via the workflow's log surface (or a downstream KB), not here.
