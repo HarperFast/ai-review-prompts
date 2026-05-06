@@ -158,6 +158,7 @@ If the bot's output is wrong in a consistent way — false-positive finding, rea
 3. **Branch protection:** enable on `main` and any `release_*` / `v*.x` branches. Require reviews on merge. This is load-bearing — the prompt's "don't push to main" instruction is a soft guardrail, branch protection is the real one.
 4. **CODEOWNERS:** optional but recommended — pair with "Require review from Code Owners" in branch protection.
 5. **Workflow files:** copy `examples/claude-review.yml`, `examples/claude-mention.yml`, `examples/claude-issue-to-pr.yml` into `.github/workflows/` and pin all `uses:` lines to commit SHAs. Adjust `REVIEW_LAYERS` in `claude-review.yml` for your repo (see available layers in this repo).
+6. **Caller invariants check:** add a thin `auth-gate-invariants.yml` (or similar) that calls `_validate-caller-workflows.yml` from this repo. It runs on PRs that touch `.github/workflows/claude-*.yml` and rejects: shadow jobs (a non-`uses:` job alongside the legit reusable call would run with the caller's perms and bypass the auth gate); tag/branch refs in `uses:` or `with.ai-review-prompts-ref` (mutable refs defeat SHA-pinning). Make this job a required status check on `main`.
 
 ---
 

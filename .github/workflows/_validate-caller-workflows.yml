@@ -1,0 +1,65 @@
+name: Validate caller workflows (reusable)
+
+# Reusable workflow that runs structural validation on a consumer
+# repo's `.github/workflows/claude-*.yml` caller files. Catches:
+#
+#   * Shadow jobs — a non-`uses:` job (or a `uses:` outside
+#     HarperFast/) alongside the legit reusable call would run with
+#     the caller's permissions WITHOUT going through the auth gate.
+#   * Mutable refs in `uses:` or `with.ai-review-prompts-ref` that
+#     defeat SHA-pinning.
+#
+# Companion to `auth-gate-invariants.yml` in this repo, which
+# validates the *reusables* (`_claude-*.yml`). That one runs HERE
+# (PRs to ai-review-prompts); this one runs in CONSUMER repos.
+#
+# Consumer caller shape:
+#
+#     name: Validate caller workflows
+#     on:
+#       pull_request:
+#         paths:
+#           - '.github/workflows/claude-*.yml'
+#       push:
+#         branches: [main]
+#         paths:
+#           - '.github/workflows/claude-*.yml'
+#     jobs:
+#       validate:
+#         uses: HarperFast/ai-review-prompts/.github/workflows/_validate-caller-workflows.yml@<sha>
+#         with:
+#           ai-review-prompts-ref: <sha>  # same SHA as above
+#
+# Make this workflow's `validate` job a REQUIRED status check on the
+# consumer's `main` so a caller-workflow regression can't merge.
+
+on:
+  workflow_call:
+    inputs:
+      ai-review-prompts-ref:
+        description: 'SHA pin for HarperFast/ai-review-prompts (validator script). REQUIRED; pass the same SHA the caller uses in its `uses:` ref.'
+        type: string
+        required: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout consumer repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Sparse-checkout ai-review-prompts validator script
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: HarperFast/ai-review-prompts
+          ref: ${{ inputs.ai-review-prompts-ref }}
+          path: .ai-review-prompts
+          sparse-checkout: |
+            .github/scripts/validate-caller-workflow.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Validate caller workflows
+        run: bash .ai-review-prompts/.github/scripts/validate-caller-workflow.sh
