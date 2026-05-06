@@ -53,6 +53,18 @@ for f in "${files[@]}"; do
   echo ""
   echo "=== Validating $f ==="
 
+  # Skip inline-pattern workflows (those with an `authorize` job).
+  # This validator only handles the caller pattern; inline-pattern
+  # files have their own auth-gate structure and are validated by the
+  # consumer's local `validate-auth-gate-invariants.sh`. The two
+  # patterns coexist in a repo's `.github/workflows/` (e.g.
+  # `claude-review.yml` as caller, `claude-mention.yml` as inline) —
+  # this just stays in the caller lane.
+  if yq -e '.jobs.authorize' "$f" >/dev/null 2>&1; then
+    echo "  ↪ inline-pattern workflow (has 'authorize' job); out of scope for this validator — skipping"
+    continue
+  fi
+
   jobs=$(yq -r '.jobs | keys | .[]' "$f" 2>/dev/null || true)
   [ -n "$jobs" ] || fail "$f: no jobs defined"
 
