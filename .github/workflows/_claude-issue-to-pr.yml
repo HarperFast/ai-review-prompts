@@ -76,6 +76,13 @@ on:
             fields): run `npm run format:check` and `npm run lint`.
             Skip `npm run build` / `npm run test:unit` — they are
             not affected and waste turns.
+          - `claude-fix:test` (test work — production code under
+            test should NOT change): run `npm run lint`, then run
+            the modified or added tests to confirm they pass. Use
+            the most-targeted invocation the test runner supports
+            (e.g. `npm run test:unit -- <pattern>` or
+            `npx mocha <file>`). Avoid running the full suite if a
+            single test or file scope works.
           - `claude-fix:deps` / `claude-fix:bug` or any change that
             touches code: run
             `npm run build && npm run lint && npm run format:check && npm run test:unit`.
@@ -123,7 +130,7 @@ jobs:
     # (Members: Read scope only) and use it ONLY in this job — the
     # work job uses the default `GITHUB_TOKEN`, so the org-read
     # capability never reaches the agent step.
-    if: contains(fromJSON('["claude-fix:typo","claude-fix:docs","claude-fix:deps","claude-fix:bug"]'), github.event.label.name)
+    if: contains(fromJSON('["claude-fix:typo","claude-fix:docs","claude-fix:deps","claude-fix:bug","claude-fix:test"]'), github.event.label.name)
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:
@@ -269,7 +276,7 @@ jobs:
             # Bun entries are present unconditionally (additive
             # pre-approval is harmless; the bun binary just isn't on
             # PATH for runs that don't set `setup-bun: true`).
-            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(npm install),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*)"
+            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(mkdir:*),Bash(mv:*),Bash(cp:*),Bash(ls:*),Bash(cat:*),Bash(npm install),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*)"
           prompt: |
             You were invoked because issue #${{ github.event.issue.number }}
             on ${{ github.repository }} was labeled
@@ -301,6 +308,13 @@ jobs:
               `npm install` + verify `npm ci` works.
             - `claude-fix:bug` — a focused bug fix with at least one
               test that fails before the fix and passes after.
+            - `claude-fix:test` — test work. Write, migrate,
+              refactor, or stabilize tests. Production code under
+              test should NOT change; this label is for the test
+              surface itself. Examples: moving a test between
+              unit/integration frameworks, adding regression tests
+              for existing functions, fixing flaky tests, porting
+              tests between runners.
 
             Any ask that requires judgment beyond the label's scope —
             new public API, architecture changes, cross-cutting
