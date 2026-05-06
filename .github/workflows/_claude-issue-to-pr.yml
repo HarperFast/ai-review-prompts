@@ -316,6 +316,20 @@ jobs:
               for existing functions, fixing flaky tests, porting
               tests between runners.
 
+              **For migrations / relocations** (e.g. unit →
+              integration, one runner → another): ADD the new
+              test in the target framework. Use the `Write` tool
+              for creating files — it creates parent directories
+              as needed, so no `mkdir` step is required. Do NOT
+              remove the original in the same change; leave it in
+              place so the human reviewer can confirm the new
+              test runs cleanly before any deletion. If the
+              duplicate causes immediate noise (failing CI,
+              spammy runner output), mark the original with
+              `.skip()` or annotate it with a TODO pointing at
+              the new file. Deletion of the original is a
+              follow-up, not part of this PR.
+
             Any ask that requires judgment beyond the label's scope —
             new public API, architecture changes, cross-cutting
             refactors — is OUT of scope. In that case, comment on
