@@ -66,9 +66,9 @@ on:
         type: string
         default: 'd2db99bb37a6dde868cbc5ac81ca4146be8956fb'  # 1.3.0 (2026-04-16)
       ai-review-prompts-ref:
-        description: 'Override the ai-review-prompts ref used for layers/scripts. If empty, derived from `github.workflow_ref` so it matches the caller-pinned `uses:` SHA.'
+        description: 'SHA pin for HarperFast/ai-review-prompts (layer files + scripts). REQUIRED; pass the same SHA the caller uses in its `uses:` ref. We can''t auto-derive this — `github.workflow_ref` resolves to the CALLER''s ref in `workflow_call` context, not the called workflow''s ref.'
         type: string
-        default: ''
+        required: true
     secrets:
       ANTHROPIC_API_KEY:
         required: true
@@ -118,35 +118,7 @@ jobs:
       contents: read
     outputs:
       authorized: ${{ steps.check.outputs.authorized }}
-      ai-review-prompts-ref: ${{ steps.derive.outputs.ref }}
     steps:
-      - name: Derive ai-review-prompts ref
-        id: derive
-        env:
-          INPUT_REF: ${{ inputs.ai-review-prompts-ref }}
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          set -uo pipefail
-          if [ -n "$INPUT_REF" ]; then
-            echo "Using input override: $INPUT_REF"
-            echo "ref=$INPUT_REF" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # `github.workflow_ref` is the called-workflow path with its ref:
-          #   HarperFast/ai-review-prompts/.github/workflows/_claude-review.yml@<ref>
-          # <ref> is a SHA when the caller pins by SHA, or `refs/heads/<branch>` /
-          # `refs/tags/<tag>` for symbolic refs. Strip the `refs/{heads,tags}/`
-          # prefixes; SHAs come through unchanged.
-          ref="${WORKFLOW_REF##*@}"
-          ref="${ref#refs/heads/}"
-          ref="${ref#refs/tags/}"
-          if [ -z "$ref" ]; then
-            echo "::error::Could not derive ai-review-prompts ref from github.workflow_ref ($WORKFLOW_REF). Pass an explicit \`ai-review-prompts-ref\` input."
-            exit 1
-          fi
-          echo "Derived ref: $ref (from $WORKFLOW_REF)"
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-
       - name: Mint org-read token
         id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
@@ -166,7 +138,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: HarperFast/ai-review-prompts
-          ref: ${{ steps.derive.outputs.ref }}
+          ref: ${{ inputs.ai-review-prompts-ref }}
           path: .ai-review-prompts
           sparse-checkout: |
             .github/scripts/authorize-claude-workflow.sh
@@ -218,12 +190,14 @@ jobs:
           path: .harper-skills
 
       - name: Clone review prompts (full)
-        # Layer files + scripts. Same ref the auth job derived; passed
-        # through as a job output so we don't re-derive.
+        # Layer files + scripts. Same ref the caller pinned for `uses:` —
+        # callers pass the SHA twice (in `uses:` AND in
+        # `ai-review-prompts-ref`) because reusable workflows can't
+        # introspect their own ref in `workflow_call` context.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: HarperFast/ai-review-prompts
-          ref: ${{ needs.authorize.outputs.ai-review-prompts-ref }}
+          ref: ${{ inputs.ai-review-prompts-ref }}
           path: .ai-review-prompts
 
       - name: Compose review scope from layers
