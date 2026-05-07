@@ -187,12 +187,41 @@ jobs:
       issues: write
       id-token: write
     steps:
+      - name: Mint write-scoped App token for git push
+        # Pushing commits with the default `GITHUB_TOKEN` does not
+        # trigger downstream workflow runs (loop-prevention guard:
+        # https://docs.github.com/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow).
+        # That left bot-authored PRs with stale CI on the prior SHA,
+        # since required checks (Format / Unit / `validate / validate`)
+        # never re-fired on the agent's push.
+        #
+        # Mint a write-scoped installation token from the same
+        # HarperFast AI Workflows App and pass it to `actions/checkout`
+        # below. `git push` then runs as the App identity, and that
+        # IS allowed to trigger workflows.
+        #
+        # Requires the App to have `Contents: Write` (and
+        # `Pull requests: Write` for the agent's `gh pr create`)
+        # installation permissions on the consumer repo.
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: ${{ secrets.HARPERFAST_AI_CLIENT_ID }}
+          private-key: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
       - name: Checkout
         # Default shallow fetch (depth 1). The agent can commit and push
         # on a shallow clone; `git log` / `git blame` aren't reached for
         # by the current prompt. Bump to a deeper fetch only if we see
         # the agent blocked on history lookups.
+        #
+        # `token:` set to the App-minted token so `git push` operations
+        # later in the agent's run trigger downstream workflows.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Clone shared Harper skills
         # Pinned to a SHA so agent behavior is reproducible across
