@@ -68,16 +68,17 @@ if [ -n "$JOB_STARTED" ] && [ -n "$CLAUDE_AT" ] && [ "$CLAUDE_AT" \< "$JOB_START
   exit 0
 fi
 
-# Title: count findings (lines starting with `### <digit>`). The
-# "no blockers" branch matches the sentinel phrase anywhere in the
-# body — the concise prompt's `Reviewed; no blockers found.` doesn't
-# start with "no blockers", so an anchored regex would miss it.
-# Anywhere-match is safe because the phrase is a deliberate output
-# from the prompt.
-if printf '%s' "$CLAUDE_BODY" | grep -qi 'no blockers found'; then
+# Title: count findings (lines starting with `### <digit>`).
+# Zero findings always titles as "no blockers" regardless of the
+# prose phrasing — relying on a sentence-grep against the prompt's
+# `Reviewed; no blockers found.` example caused early issues
+# (88, 89, 104) to fall through to "0 finding(s) — triage pending"
+# when the bot used a slight phrasing variation. Counting the
+# section headers is deterministic.
+FINDING_COUNT=$(printf '%s\n' "$CLAUDE_BODY" | grep -c '^### [0-9]' || true)
+if [ "$FINDING_COUNT" = "0" ]; then
   COUNT_PART="no blockers"
 else
-  FINDING_COUNT=$(printf '%s\n' "$CLAUDE_BODY" | grep -c '^### [0-9]' || true)
   COUNT_PART="${FINDING_COUNT} finding(s) — triage pending"
 fi
 

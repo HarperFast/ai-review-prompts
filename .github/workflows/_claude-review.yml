@@ -489,6 +489,16 @@ jobs:
             - One line per surface (auth, API contract, error path,
               etc.). No full re-derivation.
 
+            ### Areas not traced
+            - Surface or directory the diff touched but you did NOT
+              trace, with a one-line reason. e.g. "replication/ —
+              touched by 2 LOC of formatting only, low risk" or
+              "sqlTranslator/ — out of scope for an auth-layer
+              change". This is the inverse of Surfaces verified —
+              it answers "what did you skip and why?" for human
+              calibration. If you traced everything the diff
+              touched, omit the section.
+
             ### Dismissals honored from prior conversation
             - Finding "<title>" — thread #<N> said "<reason>" (link
               the thread URL when useful).
