@@ -21,6 +21,7 @@ Version-agnostic review guidance for repos in the Harper ecosystem. The repo's o
 - **`scope.resources` / `scope.server` usage.** Declared optional in the Harper type but always assigned in the Scope constructor. Code should either guard once at entry or use narrowed locals, not sprinkle `?.` / `!` throughout.
 - **`static loadAsInstance = false` (Resource API v2).** Harper instantiates the class per request; do NOT rely on shared mutable instance state across requests. If per-request state is stored, it belongs on the context (`this.getContext()`).
 - **Unused runtime dependencies.** Harper repos target minimal runtime deps. New ones require explicit justification in the PR description (some repos maintain a `dependencies.md` for this).
+- **Dev/prod dependency mismatch.** Production code paths must only import from `dependencies` or `peerDependencies`. A `devDependencies` package referenced by runtime code (e.g. `await import('undici')` in an HTTPS path, a runtime helper imported from a test-only utility) breaks deployment for any consumer that doesn't share the dev environment. Caveat: some packages are also Node built-ins on recent Node versions (`undici` on Node 22+); using them without an explicit dep is OK ONLY if `engines.node` declares the floor that makes them built-in. When the runtime requirement and the declared engine floor disagree, flag both — the missing dep AND the permissive `engines.node`.
 
 ## Documentation boundary (defer to Harper docs)
 
