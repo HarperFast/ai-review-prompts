@@ -152,7 +152,7 @@ jobs:
           ref: ${{ inputs.ai-review-prompts-ref }}
           path: .ai-review-prompts
           sparse-checkout: |
-            .github/scripts/authorize-claude-workflow.sh
+            .github/scripts/authorize-ai-workflow.sh
           sparse-checkout-cone-mode: false
 
       - name: Check commenter authorization
@@ -162,7 +162,7 @@ jobs:
           ORG_TOKEN: ${{ steps.app-token.outputs.token }}
           ADMIT_CLAUDE_BOT: 'false'
           USERS_TO_CHECK: ${{ github.event.comment.user.login }}
-        run: bash .ai-review-prompts/.github/scripts/authorize-claude-workflow.sh
+        run: bash .ai-review-prompts/.github/scripts/authorize-ai-workflow.sh
 
   work:
     needs: authorize

@@ -22,7 +22,7 @@ on:
     paths:
       - '.github/workflows/_claude-*.yml'
       - '.github/workflows/auth-gate-invariants.yml'
-      - '.github/scripts/authorize-claude-workflow.sh'
+      - '.github/scripts/authorize-ai-workflow.sh'
       - '.github/scripts/validate-auth-gate-invariants.sh'
 
 jobs:

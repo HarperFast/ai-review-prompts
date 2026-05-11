@@ -141,7 +141,7 @@ jobs:
           ref: ${{ inputs.ai-review-prompts-ref }}
           path: .ai-review-prompts
           sparse-checkout: |
-            .github/scripts/authorize-claude-workflow.sh
+            .github/scripts/authorize-ai-workflow.sh
           sparse-checkout-cone-mode: false
 
       - name: Check authorization (PR author + event actor)
@@ -153,7 +153,7 @@ jobs:
           USERS_TO_CHECK: |
             ${{ github.event.pull_request.user.login }}
             ${{ github.actor }}
-        run: bash .ai-review-prompts/.github/scripts/authorize-claude-workflow.sh
+        run: bash .ai-review-prompts/.github/scripts/authorize-ai-workflow.sh
 
   review:
     needs: authorize
@@ -211,6 +211,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Sentinel marker that discriminates this workflow's
+          # review comment from anything else on the PR (mention
+          # responses, manual comments). Matches the marker the
+          # agent writes via the prompt's "How to post" section.
+          MARKER: '<!-- claude-review:v1 -->'
         run: bash .ai-review-prompts/.github/scripts/find-prior-review-comment.sh
 
       - name: Claude review
@@ -523,6 +528,14 @@ jobs:
         # Best-effort — never fail the job if logging fails. Feeds the
         # central HarperFast/ai-review-log issue tracker that aggregates
         # findings across repos for calibration / weekly sweep.
+        #
+        # The log script is provider-agnostic; the env vars below tell
+        # it which marker to find, what model to put in the body
+        # header, and (when set) what provider label to prefix in the
+        # title. We leave PROVIDER_LABEL unset so Claude's title
+        # format stays "[<repo>] PR #<N>: no blockers" (unchanged
+        # from pre-Gemini history). NOTES_FILE_BASENAME defaults to
+        # `claude-review-notes.md` in the script.
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -531,4 +544,6 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           REVIEW_STATUS: ${{ steps.claude-review.outcome }}
           REPO_SHORT: ${{ github.event.repository.name }}
+          MARKER: '<!-- claude-review:v1 -->'
+          MODEL: ${{ inputs.model }}
         run: bash .ai-review-prompts/.github/scripts/log-review-to-ai-review-log.sh

@@ -75,7 +75,7 @@ for f in "${files[@]}"; do
     || fail "$f: HARPERFAST_AI_APP_PRIVATE_KEY secret not referenced"
 
   # 6. The authorize job sets USERS_TO_CHECK on at least one of its
-  #    steps. The auth script (`authorize-claude-workflow.sh`) fails
+  #    steps. The auth script (`authorize-ai-workflow.sh`) fails
   #    closed if USERS_TO_CHECK is empty, but the workflow still
   #    shouldn't ship without it — make the omission a structural
   #    error rather than a silent runtime denial. Defense in depth
