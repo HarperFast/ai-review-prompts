@@ -2,16 +2,17 @@ name: Auth gate invariants
 
 # Validates that the AI workflow auth gate structure is preserved
 # across the reusable workflows in this repo. Runs on any PR that
-# touches a `_claude-*.yml` reusable workflow file, the validator
-# workflow itself, the auth script, or this validator script.
+# touches a `_<provider>-{review,mention,issue-to-pr}.yml` reusable,
+# the validator workflow itself, the auth script, or this validator
+# script.
 #
 # STRUCTURAL lint, not a semantic test. Catches the obvious attacks
 # (delete the authorize job, drop the `needs:` dependency, broaden
-# permissions, change the if-expression to a tautology). Subtle
-# attacks (e.g., modifying the bash logic inside the auth check to
-# admit everyone) are caught by CODEOWNERS review, which requires
-# both `@HarperFast/developers` and `@HarperFast/devops` approval
-# on `.github/` changes.
+# permissions, weaken the if-expression to admit unauthorized runs).
+# Subtle attacks (e.g., modifying the bash logic inside the auth
+# check to admit everyone) are caught by CODEOWNERS review, which
+# requires both `@HarperFast/developers` and `@HarperFast/devops`
+# approval on `.github/` changes.
 #
 # Defense in depth — make this workflow a REQUIRED status check on
 # this repo's `main` via branch protection so PRs can't merge without
@@ -20,7 +21,9 @@ name: Auth gate invariants
 on:
   pull_request:
     paths:
-      - '.github/workflows/_claude-*.yml'
+      - '.github/workflows/_*-review.yml'
+      - '.github/workflows/_*-mention.yml'
+      - '.github/workflows/_*-issue-to-pr.yml'
       - '.github/workflows/auth-gate-invariants.yml'
       - '.github/scripts/authorize-ai-workflow.sh'
       - '.github/scripts/validate-auth-gate-invariants.sh'
