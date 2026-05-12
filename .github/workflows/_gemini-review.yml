@@ -53,9 +53,9 @@ on:
         type: string
         default: ''
       model:
-        description: 'Gemini model id passed to run-gemini-cli.'
+        description: 'Gemini model id passed to run-gemini-cli. Defaults to `gemini-3-flash-preview` — Google''s current-generation mid-tier Flash, which is the apples-to-apples peer of Claude Sonnet 4.6 on `_claude-review.yml`. Preview status: Google deprecates preview models with ≥2 weeks notice and may shift behavior; in practice this model has been stable for routine use. Override to a GA model (e.g. `gemini-2.5-flash`) if preview-drift on every `pull_request` run is a concern. Reserve Pro-tier (currently `gemini-3-pro` / `gemini-2.5-pro`) for deep-review / label-triggered thorough modes (Pro mirrors Opus on the Claude side).'
         type: string
-        default: 'gemini-2.5-pro'
+        default: 'gemini-3-flash-preview'
       gemini-cli-version:
         description: 'Gemini CLI version pin. Accepts a tag (e.g. v0.5.0), branch, commit SHA, or "latest" / "preview" / "nightly". Pin tightly during calibration.'
         type: string
