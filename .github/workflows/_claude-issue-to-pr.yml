@@ -149,13 +149,6 @@ jobs:
           private-key: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
           owner: HarperFast
 
-      - name: Sparse-checkout consumer's CODEOWNERS
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          sparse-checkout: |
-            .github/CODEOWNERS
-          sparse-checkout-cone-mode: false
-
       - name: Sparse-checkout ai-review-prompts auth script
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -163,7 +156,7 @@ jobs:
           ref: ${{ inputs.ai-review-prompts-ref }}
           path: .ai-review-prompts
           sparse-checkout: |
-            .github/scripts/authorize-claude-workflow.sh
+            .github/scripts/authorize-ai-workflow.sh
           sparse-checkout-cone-mode: false
 
       - name: Check labeler authorization
@@ -173,7 +166,7 @@ jobs:
           ORG_TOKEN: ${{ steps.app-token.outputs.token }}
           ADMIT_CLAUDE_BOT: 'false'
           USERS_TO_CHECK: ${{ github.actor }}
-        run: bash .ai-review-prompts/.github/scripts/authorize-claude-workflow.sh
+        run: bash .ai-review-prompts/.github/scripts/authorize-ai-workflow.sh
 
   work:
     needs: authorize

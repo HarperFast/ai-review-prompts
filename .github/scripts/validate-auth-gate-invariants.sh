@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Validate that the AI workflow auth gate structure is preserved
-# across all `_claude-*.yml` reusable workflows in this repo.
+# across every reusable workflow of the shape
+# `_<provider>-{review,mention,issue-to-pr}.yml` in this repo.
 # STRUCTURAL lint, not a semantic test — catches the obvious attacks
 # (delete the authorize job, drop the `needs:` dependency, broaden
-# permissions, change the if-expression to a tautology). Subtle
-# attacks (e.g., modifying the bash logic inside the auth check to
-# admit everyone) are out of scope for this validator and are caught
-# by CODEOWNERS review on `.github/` changes.
+# permissions, weaken the if-expression to admit unauthorized runs).
+# Subtle attacks (e.g., modifying the bash logic inside the auth
+# check to admit everyone) are out of scope for this validator and
+# are caught by CODEOWNERS review on `.github/` changes.
 #
 # This validator lives in HarperFast/ai-review-prompts and runs on
 # PRs that touch the reusable workflows or their scripts. Consumer
-# repos call the reusable via
-# `uses: HarperFast/ai-review-prompts/.github/workflows/_claude-*.yml@<sha>`
+# repos call the reusables via
+# `uses: HarperFast/ai-review-prompts/.github/workflows/_*-{...}.yml@<sha>`
 # — there's no per-consumer authorize job to validate, the auth gate
 # code lives here.
 #
@@ -19,7 +20,9 @@
 # make this workflow's job a REQUIRED status check.
 #
 # Inputs (none — runs in the workflow checkout). Validates:
-#   .github/workflows/_claude-*.yml
+#   .github/workflows/_*-review.yml
+#   .github/workflows/_*-mention.yml
+#   .github/workflows/_*-issue-to-pr.yml
 #
 # Exit code:
 #   0  all workflows pass
@@ -34,10 +37,19 @@ fail() {
 # yq is pre-installed on ubuntu-latest runners.
 command -v yq >/dev/null || fail "yq not available on runner"
 
+# Pattern-based file enumeration: every reusable that follows the
+# `_<provider>-{review,mention,issue-to-pr}.yml` convention gets
+# validated. New providers added by following the naming
+# convention are picked up automatically; the validator's coverage
+# doesn't drift as we onboard more reviewers.
 shopt -s nullglob
-files=(.github/workflows/_claude-*.yml)
+files=(
+  .github/workflows/_*-review.yml
+  .github/workflows/_*-mention.yml
+  .github/workflows/_*-issue-to-pr.yml
+)
 if [ "${#files[@]}" -eq 0 ]; then
-  echo "No _claude-*.yml workflows found; nothing to validate."
+  echo "No auth-gated reusable workflows found; nothing to validate."
   exit 0
 fi
 
@@ -75,7 +87,7 @@ for f in "${files[@]}"; do
     || fail "$f: HARPERFAST_AI_APP_PRIVATE_KEY secret not referenced"
 
   # 6. The authorize job sets USERS_TO_CHECK on at least one of its
-  #    steps. The auth script (`authorize-claude-workflow.sh`) fails
+  #    steps. The auth script (`authorize-ai-workflow.sh`) fails
   #    closed if USERS_TO_CHECK is empty, but the workflow still
   #    shouldn't ship without it — make the omission a structural
   #    error rather than a silent runtime denial. Defense in depth
@@ -93,10 +105,17 @@ for f in "${files[@]}"; do
   [ -n "$users_to_check" ] \
     || fail "$f: authorize job has no step setting USERS_TO_CHECK env var — the auth script needs at least one login to check (PR author, commenter, labeler, etc.)"
 
-  # 7. Every non-authorize job has `needs: authorize` and a strict
-  #    if-expression of exactly: needs.authorize.outputs.authorized == 'true'
-  #    (whitespace normalized). Stricter than substring match —
-  #    rules out tautologies like `... || true`.
+  # 7. Every non-authorize job has `needs: authorize` and an
+  #    if-expression that REQUIRES the auth check.
+  #
+  #    Rule: the if MUST contain the literal substring
+  #    `needs.authorize.outputs.authorized == 'true'` AND MUST NOT
+  #    contain `||`. Additional `&&` conjuncts (e.g. checking for
+  #    an optional secret like GEMINI_API_KEY before running the
+  #    review job) are allowed because `&&` is strictly more
+  #    restrictive — false on the new term still blocks the job.
+  #    `||` is banned because it could short-circuit the auth
+  #    check (`auth == 'true' || true` is the classic attack).
   other_jobs=$(yq -r '.jobs | keys | .[]' "$f" | grep -v '^authorize$' || true)
   [ -n "$other_jobs" ] \
     || fail "$f: no non-authorize job found — workflow has nothing gated"
@@ -107,15 +126,18 @@ for f in "${files[@]}"; do
       || fail "$f: job '$j' must have 'needs: authorize' (got: $needs)"
 
     if_expr=$(yq -r ".jobs.${j}.if // \"\"" "$f")
-    # Normalize whitespace and quotes for the comparison.
+    # Normalize whitespace for the substring check.
     normalized=$(echo "$if_expr" | tr -s ' ' | tr -d "\n")
-    expected="needs.authorize.outputs.authorized == 'true'"
-    [ "$normalized" = "$expected" ] \
-      || fail "$f: job '$j' if: must be exactly \"$expected\" — no compound expressions, no tautologies (got: $if_expr)"
+    required="needs.authorize.outputs.authorized == 'true'"
+    echo "$normalized" | grep -qF "$required" \
+      || fail "$f: job '$j' if: must include \"$required\" (got: $if_expr)"
+    if echo "$normalized" | grep -qF '||'; then
+      fail "$f: job '$j' if: contains '||' — only && conjuncts allowed to keep the auth check load-bearing (got: $if_expr)"
+    fi
   done
 
   echo "  ✓ $f passed"
 done
 
 echo ""
-echo "All _claude-*.yml workflows pass auth gate invariants."
+echo "All auth-gated reusable workflows pass auth gate invariants."
