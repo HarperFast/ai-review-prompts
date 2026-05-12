@@ -130,13 +130,6 @@ jobs:
           private-key: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
           owner: HarperFast
 
-      - name: Sparse-checkout consumer's CODEOWNERS
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          sparse-checkout: |
-            .github/CODEOWNERS
-          sparse-checkout-cone-mode: false
-
       - name: Sparse-checkout ai-review-prompts auth script
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -372,6 +365,16 @@ jobs:
             primitive equivalent to the Claude reviewer's. All
             per-line findings go into the single top-level comment,
             with file:line references in each finding.
+
+            **Each finding follows the `### <N>. <Title>` format from
+            the universal review scope above** (`**File:** path:line`
+            + `**What:** …` + `**Why it matters:** …` +
+            `**Suggested fix:** …`). The `### <N>.` header is
+            load-bearing: the log step parses these to set the
+            ai-review-log issue title (e.g. "3 finding(s) — triage
+            pending"). If you wrap findings in any other shape, the
+            issue title will under-count and read as "no blockers"
+            even when you posted real findings.
 
             **For "no blockers" runs, the PR comment is one sentence.**
             The verbose calibration tracing belongs in the

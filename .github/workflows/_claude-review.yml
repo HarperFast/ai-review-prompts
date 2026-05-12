@@ -113,8 +113,11 @@ jobs:
     timeout-minutes: 1
     permissions:
       # `contents: read` so we can fetch the consumer repo's
-      # `.github/CODEOWNERS` via the default token, and check out this
-      # repo (ai-review-prompts) for the auth script.
+      # `.github/CODEOWNERS` via the GitHub API (the auth script
+      # uses `gh api .../contents/.github/CODEOWNERS` — defaults
+      # to the repo's default branch, so a malicious PR can't
+      # tamper with the trust set), and check out this repo
+      # (ai-review-prompts) for the auth script itself.
       contents: read
     outputs:
       authorized: ${{ steps.check.outputs.authorized }}
@@ -126,13 +129,6 @@ jobs:
           client-id: ${{ secrets.HARPERFAST_AI_CLIENT_ID }}
           private-key: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
           owner: HarperFast
-
-      - name: Sparse-checkout consumer's CODEOWNERS
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          sparse-checkout: |
-            .github/CODEOWNERS
-          sparse-checkout-cone-mode: false
 
       - name: Sparse-checkout ai-review-prompts auth script
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
