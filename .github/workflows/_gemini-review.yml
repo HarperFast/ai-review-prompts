@@ -362,13 +362,13 @@ jobs:
         # Defensive: refuses to post if the response is empty or
         # doesn't start with the marker line. Logs a warning and
         # skips rather than publishing mystery content.
-        if: steps.gemini-review.outputs.gemini_response != ''
+        if: steps.gemini-review.outputs.summary != ''
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PRIOR_REVIEW_COMMENT_ID: ${{ steps.prior_review.outputs.id }}
           MARKER: '<!-- gemini-review:v1 -->'
-          BODY: ${{ steps.gemini-review.outputs.gemini_response }}
+          BODY: ${{ steps.gemini-review.outputs.summary }}
         run: bash .ai-review-prompts/.github/scripts/post-review-comment.sh
 
       - name: Log review to ai-review-log
