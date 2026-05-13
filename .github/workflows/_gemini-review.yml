@@ -320,9 +320,20 @@ jobs:
         # though the GITHUB_TOKEN's `pull-requests: write` scope
         # already bounds what's possible.
         #
-        # `tools.core` allows a constrained shell surface. Same
-        # commands Google's example uses, plus `git` (for diff /
-        # log / blame queries the agent will want).
+        # Shell command allowlist (`tools.core`) is intentionally
+        # OMITTED in this iteration so we can observe what the
+        # agent actually wants to call. The single-shot trial run
+        # on HarperFast/oauth#83 showed denials on `run_shell_command`
+        # without identifying which commands were attempted; the
+        # CLI's debug mode plus an open allowlist surfaces that
+        # signal. Re-add a tightened allowlist after we see what
+        # the agent uses in practice.
+        #
+        # `gemini_debug: 'true'` (below) routes the CLI's stdout
+        # and stderr to the workflow log (in addition to the
+        # artifact tempfiles), making MCP server startup and tool
+        # registration visible. Action README:
+        # "Enable debug logging and output streaming."
         uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
@@ -331,6 +342,7 @@ jobs:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: ${{ inputs.model }}
           gemini_cli_version: ${{ inputs.gemini-cli-version }}
+          gemini_debug: 'true'
           upload_artifacts: 'true'
           extensions: |
             [
@@ -344,7 +356,7 @@ jobs:
                 "outfile": ".gemini/telemetry.log"
               },
               "model": {
-                "maxSessionTurns": 15
+                "maxSessionTurns": 30
               },
               "modelConfigs": {
                 "aliases": {
@@ -381,16 +393,6 @@ jobs:
                     "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
                   }
                 }
-              },
-              "tools": {
-                "core": [
-                  "run_shell_command(cat)",
-                  "run_shell_command(echo)",
-                  "run_shell_command(grep)",
-                  "run_shell_command(head)",
-                  "run_shell_command(tail)",
-                  "run_shell_command(git)"
-                ]
               }
             }
           prompt: '/harper-review'
