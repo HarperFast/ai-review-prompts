@@ -312,28 +312,34 @@ jobs:
         # Tool allowlist via `mcpServers.github.includeTools`:
         #   - `pull_request_read` (umbrella: get, get_diff,
         #     get_comments, get_review_comments, get_reviews)
-        #   - `pull_request_review_write` (umbrella for create,
-        #     submit, delete review)
-        #   - `add_comment_to_pending_review` (per-line comments)
+        #   - `pull_request_review_write` (umbrella for create
+        #     and submit_pending; we use `create` with `event` set
+        #     to atomically submit in one call)
+        # `add_comment_to_pending_review` is DELIBERATELY NOT
+        # included: the pending-review flow is race-prone (the
+        # debug iteration showed comments failing to attach
+        # despite create succeeding). We embed findings in the
+        # review body as plain text with `**File:** path:line`
+        # references — see prompts/gemini-review.toml.template
+        # Step 3.
         # NOT included: anything that creates/modifies issues,
         # branches, or repo configuration. Defense in depth even
         # though the GITHUB_TOKEN's `pull-requests: write` scope
         # already bounds what's possible.
         #
-        # Shell command allowlist (`tools.core`) is intentionally
-        # OMITTED in this iteration so we can observe what the
-        # agent actually wants to call. The single-shot trial run
-        # on HarperFast/oauth#83 showed denials on `run_shell_command`
-        # without identifying which commands were attempted; the
-        # CLI's debug mode plus an open allowlist surfaces that
-        # signal. Re-add a tightened allowlist after we see what
-        # the agent uses in practice.
+        # Shell allowlist (`tools.core`) reflects what we observed
+        # the agent actually using in the open-allowlist debug
+        # iteration: `run_shell_command` was called just once total,
+        # and the agent leans on the CLI built-ins (`read_file`,
+        # `list_directory`) plus the MCP `pull_request_read` tools
+        # for almost everything. We keep `git` (the agent uses it
+        # for log/blame/show context), plus `cat`/`grep`/`echo`
+        # for occasional inspection. No `find` / `ls` / `wc` /
+        # `awk` / `sed` — the agent didn't reach for those.
         #
-        # `gemini_debug: 'true'` (below) routes the CLI's stdout
-        # and stderr to the workflow log (in addition to the
-        # artifact tempfiles), making MCP server startup and tool
-        # registration visible. Action README:
-        # "Enable debug logging and output streaming."
+        # `gemini_debug` is kept on for the atomic-submission
+        # iteration so we can verify the new submission path works
+        # end-to-end. Disable once we trust the wiring.
         uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
@@ -356,7 +362,7 @@ jobs:
                 "outfile": ".gemini/telemetry.log"
               },
               "model": {
-                "maxSessionTurns": 30
+                "maxSessionTurns": 20
               },
               "modelConfigs": {
                 "aliases": {
@@ -386,13 +392,20 @@ jobs:
                   ],
                   "includeTools": [
                     "pull_request_read",
-                    "pull_request_review_write",
-                    "add_comment_to_pending_review"
+                    "pull_request_review_write"
                   ],
                   "env": {
                     "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
                   }
                 }
+              },
+              "tools": {
+                "core": [
+                  "run_shell_command(git)",
+                  "run_shell_command(cat)",
+                  "run_shell_command(grep)",
+                  "run_shell_command(echo)"
+                ]
               }
             }
           prompt: '/harper-review'
