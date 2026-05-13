@@ -35,7 +35,7 @@
 # all exit cleanly with a notice/warning rather than failing.
 #
 # Inputs:
-#   MARKER                — required. Comment-body prefix to match
+#   MARKER                — required. Body prefix to match
 #                           (e.g. `<!-- claude-review:v1 -->`).
 #   MODEL                 — required. Model id for the body header
 #                           (e.g. "claude-sonnet-4-6", "gemini-2.5-pro").
@@ -46,6 +46,20 @@
 #   NOTES_FILE_BASENAME   — optional. Run-notes filename under
 #                           $RUNNER_TEMP. Defaults to
 #                           "claude-review-notes.md".
+#   LOOKUP_API_PATH       — optional. The GitHub API path to query
+#                           for the provider's review surface.
+#                           Default:
+#                           `repos/<owner>/<repo>/issues/<N>/comments`
+#                           (top-level issue comments — the Claude
+#                           legacy path). Set to
+#                           `repos/<owner>/<repo>/pulls/<N>/reviews`
+#                           for the Gemini reviewer, which submits
+#                           via the GitHub Review API rather than
+#                           posting a top-level issue comment. Both
+#                           endpoints return JSON arrays with
+#                           `body` / `updated_at` / `created_at`,
+#                           so the marker-startswith filter works
+#                           uniformly.
 #   GH_TOKEN              — token with `pull-requests: read`
 #   AI_REVIEW_LOG_TOKEN   — fine-grained PAT scoped to
 #                           ai-review-log with `issues: write`
@@ -86,28 +100,32 @@ fi
 # fresh finding.
 JOB_STARTED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq '.run_started_at // empty')
 
-# Fetch the marker'd review comment via raw API. We can't use
-# `gh pr view --json comments` because (a) it doesn't expose
-# `updated_at` (which we need below for the staleness guard now
-# that comments are edited in place), and (b) we need the marker
-# filter — author-only filtering would catch unrelated comments
-# from the same identity (e.g. @claude mention responses on the
-# Claude side, or any github-actions[bot] comment on the Gemini
-# side).
-REVIEW_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+# Fetch the marker'd review surface via raw API. Two endpoints
+# are in use depending on the provider:
+#   * Default (Claude legacy): top-level issue comments
+#     (`/issues/<N>/comments`)
+#   * Gemini reviewer (MCP-based): pull request reviews
+#     (`/pulls/<N>/reviews`)
+# Both return JSON arrays with `body` / `updated_at` / `created_at`,
+# so the marker-startswith filter is uniform. We can't use
+# `gh pr view --json comments` because it doesn't expose
+# `updated_at` (which we need below for the staleness guard).
+LOOKUP_API_PATH="${LOOKUP_API_PATH:-repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments}"
+REVIEW_JSON=$(gh api "$LOOKUP_API_PATH" \
   | jq --arg marker "$MARKER" \
-    '[.[] | select(.body | startswith($marker))] | last // empty')
+    '[.[] | select((.body // "") | startswith($marker))] | last // empty')
 
 if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
-  echo "No marker'd review comment ($MARKER) found on PR #$PR_NUMBER (review_status=$REVIEW_STATUS); skipping log."
+  echo "No marker'd review surface ($MARKER) found at $LOOKUP_API_PATH (review_status=$REVIEW_STATUS); skipping log."
   exit 0
 fi
 
 REVIEW_BODY=$(printf '%s' "$REVIEW_JSON" | jq -r '.body // empty')
-# Prefer updated_at (reflects the most recent edit) over created_at
-# (frozen at original post time) — comments are now edited in place
-# across runs.
-REVIEW_AT=$(printf '%s' "$REVIEW_JSON" | jq -r '.updated_at // .created_at // empty')
+# Prefer updated_at (top-level comments — reflects the most
+# recent edit) > submitted_at (PR reviews — set when the agent
+# calls submit_pending_pull_request_review) > created_at (issue-
+# comments fallback). Both endpoints' shapes are covered.
+REVIEW_AT=$(printf '%s' "$REVIEW_JSON" | jq -r '.updated_at // .submitted_at // .created_at // empty')
 
 if [ -z "$REVIEW_BODY" ]; then
   echo "Review comment had empty body; skipping log."
