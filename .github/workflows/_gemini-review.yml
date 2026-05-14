@@ -489,11 +489,71 @@ jobs:
             }
           # Upstream slash command from the
           # gemini-cli-extensions/code-review extension (loaded
-          # via `extensions:` above). Substitutes $REPOSITORY,
-          # $PULL_REQUEST_NUMBER, $ADDITIONAL_CONTEXT at
-          # prompt-render time. Harper-specific scope is layered
-          # in via the ADDITIONAL_CONTEXT env var.
+          # via `extensions:` above). The prompt body contains
+          # literal `$REPOSITORY` / `$PULL_REQUEST_NUMBER` /
+          # `$ADDITIONAL_CONTEXT` references — these are NOT
+          # substituted at prompt-render time; the agent is
+          # expected to read them at runtime via shell. Our
+          # `tools.core` allowlist includes `echo` for exactly
+          # this purpose. Harper-specific scope is layered in
+          # via the ADDITIONAL_CONTEXT env var.
           prompt: '/pr-code-review'
+
+      - name: Upload gemini-artifacts (failure path)
+        # Workaround for an upstream visibility gap: the
+        # run-gemini-cli action's "Upload Gemini CLI outputs"
+        # inner step is `if: inputs.upload_artifacts == 'true'`
+        # but NOT `if: always()`. When the inner gemini-cli
+        # bash step exits non-zero, the upload inner step is
+        # short-circuited by composite-action failure semantics
+        # — so on the exact runs we most want logs from, none
+        # are uploaded.
+        #
+        # The wrapper script writes `gemini-artifacts/{stdout,
+        # stderr,telemetry}.log` BEFORE its `exit 1`, so the
+        # files exist on disk. We just need to upload them
+        # ourselves. `if: failure()` makes this a no-op on
+        # the success path (the inner step's upload handles
+        # that case as `gemini-output`).
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gemini-output-failure
+          path: gemini-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Append gemini logs tail to job summary
+        # At-a-glance diagnostics for failed Gemini runs without
+        # needing to download the artifact zip. Trims to a
+        # bounded size so the summary doesn't blow past GitHub's
+        # 1 MB per-job limit.
+        if: failure()
+        run: |
+          set -euo pipefail
+          if [ ! -d gemini-artifacts ]; then
+            echo "## ⚠️ Gemini run failed (no gemini-artifacts/ directory)" >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+            echo "The gemini-cli wrapper exited before writing logs to disk." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## ⚠️ Gemini run failed — log tails"
+            echo
+            echo "Full logs uploaded as the \`gemini-output-failure\` artifact."
+            echo
+            for f in stdout.log stderr.log telemetry.log; do
+              if [ -f "gemini-artifacts/$f" ] && [ -s "gemini-artifacts/$f" ]; then
+                echo "### \`gemini-artifacts/$f\` (last 200 lines)"
+                echo
+                echo '```'
+                tail -n 200 "gemini-artifacts/$f" | head -c 50000
+                echo
+                echo '```'
+                echo
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Log review to ai-review-log
         # Best-effort — never fail the job if logging fails. Feeds
