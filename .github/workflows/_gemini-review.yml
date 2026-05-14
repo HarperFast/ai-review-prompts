@@ -254,17 +254,64 @@ jobs:
           LAYERS: ${{ inputs.review-layers }}
         run: bash .ai-review-prompts/.github/scripts/compose-review-scope.sh
 
-      - name: Compose Harper review command TOML
-        # Substitutes our composed layered scope + repo-specific
-        # checks into a TOML template (adopted from Google's
-        # gemini-review.toml structure) and writes to
-        # `.gemini/commands/harper-review.toml`. The Gemini CLI
-        # picks it up as a custom slash command; the agent step
-        # below invokes it as `/harper-review`.
+      - name: Build ADDITIONAL_CONTEXT for upstream /pr-code-review
+        # We invoke the upstream code-review extension's slash
+        # command (`/pr-code-review`) rather than a custom one.
+        # The upstream prompt substitutes `$ADDITIONAL_CONTEXT`
+        # at prompt-render time, so this is the hook for layering
+        # Harper-specific instructions on top of the calibrated
+        # base prompt.
+        #
+        # History: earlier iterations composed a full custom
+        # `.gemini/commands/harper-review.toml` and invoked it as
+        # `/harper-review`. Those iterations hit "agent ignores the
+        # custom prompt and reverts to training-instinct shell
+        # discovery" — the upstream slash command sidesteps that
+        # by being the exact pattern the model was trained on.
+        # `prompts/gemini-review.toml.template` + the legacy
+        # composer script (`compose-gemini-review-toml.sh`) are
+        # retained in the repo for reference / rollback but no
+        # longer wired into this workflow.
+        id: additional_context
         env:
           REVIEW_SCOPE: ${{ steps.scope.outputs.composed }}
           REPO_SPECIFIC_CHECKS: ${{ inputs.repo-specific-checks }}
-        run: bash .ai-review-prompts/.github/scripts/compose-gemini-review-toml.sh
+          MARKER: '<!-- gemini-review:v1 -->'
+        run: |
+          {
+            echo "ctx<<HARPER_ADDITIONAL_CONTEXT_EOF"
+            echo "## Harper review scope (layered)"
+            echo
+            echo "Apply the following Harper-specific review scope on top of the upstream code-review skill's defaults. These layers are the authoritative review checklist for this repo:"
+            echo
+            echo "${REVIEW_SCOPE}"
+            echo
+            if [ -n "${REPO_SPECIFIC_CHECKS}" ]; then
+              echo "${REPO_SPECIFIC_CHECKS}"
+              echo
+            fi
+            echo "## Harper severity discipline"
+            echo
+            echo "- Post ONLY findings tagged 🔴 Critical or 🟠 High. 🟡 Medium and 🟢 Low map to the universal-scope 'do not post' category in our layered scope."
+            echo "- Cap the review at 10 findings."
+            echo
+            echo "## Trivial-diff short-circuit"
+            echo
+            echo "If the diff is trivial (dependency version bumps, CI workflow pin updates, lockfile-only churn, prose-only doc changes, version-string bumps), do NOT generate findings about code outside the diff. The summary body in that case is exactly:"
+            echo
+            echo "    Reviewed; no blockers found."
+            echo
+            echo "Skip the 🔍 General Feedback section entirely on trivial diffs."
+            echo
+            echo "## Submission marker (REQUIRED)"
+            echo
+            echo "The submitted review summary MUST begin with the literal first line:"
+            echo
+            echo "    ${MARKER}"
+            echo
+            echo "Followed by a blank line, then the standard ## 📋 Review Summary section. This marker is what threads runs together across pushes — without it, our log surface cannot find this review on subsequent runs."
+            echo "HARPER_ADDITIONAL_CONTEXT_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Find prior review marker
         id: prior_review
@@ -309,57 +356,67 @@ jobs:
         #     "https://ghcr.io/v2/github/github-mcp-server/manifests/v1.0.4" \
         #     | grep -i docker-content-digest
         #
-        # Tool allowlist via `mcpServers.github.includeTools`:
+        # Tool allowlist via `mcpServers.github.includeTools`
+        # matches upstream's pr-review example exactly. The
+        # upstream `/pr-code-review` slash command uses the
+        # pending-review flow (create_pending → add_comments →
+        # submit_pending). Prior atomic-submission iteration
+        # (#33) tried to sidestep the race but didn't help because
+        # the agent was never reaching MCP in the first place
+        # (#34/#35 root cause analysis). Trust the upstream's
+        # calibrated prompt to navigate the pending flow.
         #   - `pull_request_read` (umbrella: get, get_diff,
-        #     get_comments, get_review_comments, get_reviews)
-        #   - `pull_request_review_write` (umbrella for create
-        #     and submit_pending; we use `create` with `event` set
-        #     to atomically submit in one call)
-        # `add_comment_to_pending_review` is DELIBERATELY NOT
-        # included: the pending-review flow is race-prone (the
-        # debug iteration showed comments failing to attach
-        # despite create succeeding). We embed findings in the
-        # review body as plain text with `**File:** path:line`
-        # references — see prompts/gemini-review.toml.template
-        # Step 3.
+        #     get_files, get_comments, get_review_comments,
+        #     get_reviews)
+        #   - `pull_request_review_write` (umbrella; the upstream
+        #     prompt calls flat names like
+        #     `create_pending_pull_request_review` /
+        #     `submit_pending_pull_request_review` through this
+        #     umbrella)
+        #   - `add_comment_to_pending_review` (per-line comments
+        #     during the pending flow)
         # NOT included: anything that creates/modifies issues,
         # branches, or repo configuration. Defense in depth even
         # though the GITHUB_TOKEN's `pull-requests: write` scope
         # already bounds what's possible.
         #
         # Shell allowlist (`tools.core`) mirrors upstream's
-        # pr-review example (`cat`, `echo`, `grep`, `head`, `tail`)
-        # plus `git` (the agent uses `git log`/`blame`/`show` for
-        # history context). The post-#33 run exposed an oversight
-        # in the previous "minimal" allowlist: the agent's first
-        # instinct is to `ls` the workspace and `head` a file —
-        # those denials are not always visible to the model and
-        # caused turn-thrash (multiple retries of denied commands).
-        # No `find` / `ls -R` / `awk` / `sed`.
+        # pr-review example exactly (`cat`, `echo`, `grep`,
+        # `head`, `tail`). `git` is intentionally OMITTED — the
+        # upstream slash command's prompt does not call git and
+        # the agent's git instincts (`git log`, `git diff`,
+        # `git rev-parse`, `git remote -v`) are what we're trying
+        # to suppress; if the agent tries git, the deny tells it
+        # to fall back to MCP, which is what we want.
         #
         # PR-context env vars (PULL_REQUEST_NUMBER, REPOSITORY,
-        # ISSUE_TITLE, ISSUE_BODY) are REQUIRED — the agent's
-        # training (per upstream's pr-review example workflow)
-        # is to look these up via `printenv`. Without them, the
-        # agent burns turns running `printenv`/`env`/`git remote`
-        # trying to discover which PR it's reviewing. Observed
-        # 20-turn exhaustion on HarperFast/oauth#83 (post-#33 run
-        # 25831513834) before MCP tools were ever called.
+        # ISSUE_TITLE, ISSUE_BODY, ADDITIONAL_CONTEXT) — required
+        # by the upstream `/pr-code-review` slash command. The
+        # slash command substitutes these at prompt-render time
+        # using `$NAME` syntax, so the agent sees concrete values
+        # rather than shell-syntax cues.
         #
-        # `gemini_debug` is kept on for one more iteration so we
-        # can verify the env vars solve the context-discovery
-        # problem. Disable once we see a clean run.
+        # `gemini_debug` stays on for this iteration so we can
+        # verify the pivot end-to-end. Disable in the next bump
+        # if clean.
         uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
           GITHUB_TOKEN: ${{ github.token }}
-          # Upstream pr-review-example contract — the agent looks
-          # for these by name. See examples/workflows/pr-review/
-          # gemini-review.yml in google-github-actions/run-gemini-cli.
+          # Upstream pr-review-example contract — the upstream
+          # `/pr-code-review` slash command substitutes these
+          # by name. See examples/workflows/pr-review/ in
+          # google-github-actions/run-gemini-cli and
+          # commands/pr-code-review.toml in
+          # gemini-cli-extensions/code-review.
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
           ISSUE_TITLE: ${{ github.event.pull_request.title }}
           ISSUE_BODY: ${{ github.event.pull_request.body }}
+          # Our Harper-specific layered scope + repo-specific
+          # checks + severity discipline + marker requirement.
+          # Built by the "Build ADDITIONAL_CONTEXT" step above.
+          ADDITIONAL_CONTEXT: ${{ steps.additional_context.outputs.ctx }}
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: ${{ inputs.model }}
@@ -411,6 +468,7 @@ jobs:
                     "ghcr.io/github/github-mcp-server@sha256:e3816a476a977cfb836e7d221510011436c654d11861db66ecfd826601aba6a4"
                   ],
                   "includeTools": [
+                    "add_comment_to_pending_review",
                     "pull_request_read",
                     "pull_request_review_write"
                   ],
@@ -423,14 +481,19 @@ jobs:
                 "core": [
                   "run_shell_command(cat)",
                   "run_shell_command(echo)",
-                  "run_shell_command(git)",
                   "run_shell_command(grep)",
                   "run_shell_command(head)",
                   "run_shell_command(tail)"
                 ]
               }
             }
-          prompt: '/harper-review'
+          # Upstream slash command from the
+          # gemini-cli-extensions/code-review extension (loaded
+          # via `extensions:` above). Substitutes $REPOSITORY,
+          # $PULL_REQUEST_NUMBER, $ADDITIONAL_CONTEXT at
+          # prompt-render time. Harper-specific scope is layered
+          # in via the ADDITIONAL_CONTEXT env var.
+          prompt: '/pr-code-review'
 
       - name: Log review to ai-review-log
         # Best-effort — never fail the job if logging fails. Feeds
