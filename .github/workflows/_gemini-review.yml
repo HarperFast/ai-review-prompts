@@ -327,29 +327,49 @@ jobs:
         # though the GITHUB_TOKEN's `pull-requests: write` scope
         # already bounds what's possible.
         #
-        # Shell allowlist (`tools.core`) reflects what we observed
-        # the agent actually using in the open-allowlist debug
-        # iteration: `run_shell_command` was called just once total,
-        # and the agent leans on the CLI built-ins (`read_file`,
-        # `list_directory`) plus the MCP `pull_request_read` tools
-        # for almost everything. We keep `git` (the agent uses it
-        # for log/blame/show context), plus `cat`/`grep`/`echo`
-        # for occasional inspection. No `find` / `ls` / `wc` /
-        # `awk` / `sed` — the agent didn't reach for those.
+        # Shell allowlist (`tools.core`) mirrors upstream's
+        # pr-review example (`cat`, `echo`, `grep`, `head`, `tail`)
+        # plus `git` (the agent uses `git log`/`blame`/`show` for
+        # history context). The post-#33 run exposed an oversight
+        # in the previous "minimal" allowlist: the agent's first
+        # instinct is to `ls` the workspace and `head` a file —
+        # those denials are not always visible to the model and
+        # caused turn-thrash (multiple retries of denied commands).
+        # No `find` / `ls -R` / `awk` / `sed`.
         #
-        # `gemini_debug` is kept on for the atomic-submission
-        # iteration so we can verify the new submission path works
-        # end-to-end. Disable once we trust the wiring.
+        # PR-context env vars (PULL_REQUEST_NUMBER, REPOSITORY,
+        # ISSUE_TITLE, ISSUE_BODY) are REQUIRED — the agent's
+        # training (per upstream's pr-review example workflow)
+        # is to look these up via `printenv`. Without them, the
+        # agent burns turns running `printenv`/`env`/`git remote`
+        # trying to discover which PR it's reviewing. Observed
+        # 20-turn exhaustion on HarperFast/oauth#83 (post-#33 run
+        # 25831513834) before MCP tools were ever called.
+        #
+        # `gemini_debug` is kept on for one more iteration so we
+        # can verify the env vars solve the context-discovery
+        # problem. Disable once we see a clean run.
         uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
           GITHUB_TOKEN: ${{ github.token }}
+          # Upstream pr-review-example contract — the agent looks
+          # for these by name. See examples/workflows/pr-review/
+          # gemini-review.yml in google-github-actions/run-gemini-cli.
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_TITLE: ${{ github.event.pull_request.title }}
+          ISSUE_BODY: ${{ github.event.pull_request.body }}
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: ${{ inputs.model }}
           gemini_cli_version: ${{ inputs.gemini-cli-version }}
           gemini_debug: 'true'
           upload_artifacts: 'true'
+          # Explicit PR number for the MCP github_pr_number input —
+          # belt-and-suspenders alongside PULL_REQUEST_NUMBER env var.
+          # Mirrors upstream pr-review example.
+          github_pr_number: ${{ github.event.pull_request.number }}
           extensions: |
             [
               "https://github.com/gemini-cli-extensions/code-review"
@@ -401,10 +421,12 @@ jobs:
               },
               "tools": {
                 "core": [
-                  "run_shell_command(git)",
                   "run_shell_command(cat)",
+                  "run_shell_command(echo)",
+                  "run_shell_command(git)",
                   "run_shell_command(grep)",
-                  "run_shell_command(echo)"
+                  "run_shell_command(head)",
+                  "run_shell_command(tail)"
                 ]
               }
             }
