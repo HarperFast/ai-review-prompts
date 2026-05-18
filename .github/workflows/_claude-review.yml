@@ -7,7 +7,13 @@ name: Claude PR Review (reusable)
 #     name: Claude PR Review
 #     on:
 #       pull_request:
-#         types: [opened, synchronize, reopened]
+#         # `labeled` is opt-in: when a trusted HarperFast member applies
+#         # the `claude-review` label (or whatever the `label-trigger`
+#         # input names), this workflow fires on a bot-authored PR. The
+#         # labeler — not the bot PR author — satisfies the auth gate.
+#         # Useful for renovate / dependabot PRs that would otherwise
+#         # be silently skipped.
+#         types: [opened, synchronize, reopened, labeled]
 #     concurrency:
 #       group: claude-review-${{ github.event.pull_request.number }}
 #       cancel-in-progress: true
@@ -69,6 +75,10 @@ on:
         description: 'SHA pin for HarperFast/ai-review-prompts (layer files + scripts). REQUIRED; pass the same SHA the caller uses in its `uses:` ref. We can''t auto-derive this — `github.workflow_ref` resolves to the CALLER''s ref in `workflow_call` context, not the called workflow''s ref.'
         type: string
         required: true
+      label-trigger:
+        description: 'Label name that gates review on PRs from untrusted authors (bots like renovate / dependabot, or any author not in the CODEOWNERS-derived trust set). When a trusted HarperFast member applies this label, the `labeled` event admits the run with the labeler — not the PR author — satisfying the auth gate. Default `claude-review`. The consumer caller must include `labeled` in its `pull_request: types:` for the event to fire.'
+        type: string
+        default: 'claude-review'
     secrets:
       ANTHROPIC_API_KEY:
         required: true
@@ -96,12 +106,31 @@ jobs:
     # ignored. `claude[bot]` is admitted explicitly so AI-authored PRs
     # from the issue-to-PR pipeline get reviewed.
     #
-    # We check TWO identities; both must be authorized:
-    #   * `pull_request.user.login` — the PR's original author.
-    #   * `github.actor` — whoever triggered THIS specific event (the
-    #     pusher on `synchronize`, etc.). A non-trusted user pushing
-    #     to a trusted user's PR branch changes the actor without
-    #     changing the PR author; we want to refuse those events.
+    # We check TWO identities; both must be authorized. WHICH two
+    # depends on the event:
+    #
+    #   * Normal `pull_request` events (opened / synchronize /
+    #     reopened): PR author (`pull_request.user.login`) + event
+    #     actor (`github.actor`). A non-trusted user pushing to a
+    #     trusted user's PR branch changes the actor without changing
+    #     the PR author; we want to refuse those events.
+    #
+    #   * `labeled` events (one of `label-trigger`): LABELER
+    #     (`github.event.sender.login`) + event actor — same person.
+    #     This admits PRs from untrusted authors (renovate /
+    #     dependabot / external contributors) when a trusted member
+    #     opts them in by applying the trigger label. The PR-author
+    #     check is intentionally bypassed in this path; the trusted
+    #     labeler is the gesture.
+    #
+    # The non-matching labeled events (any other label applied) are
+    # filtered out at the job-level `if:` below, so the job doesn't
+    # even spin up.
+    #
+    # Re-running on subsequent commits: after a labeled bot PR
+    # receives a new push, the `synchronize` event fires with PR
+    # author still untrusted, so it skips. To re-review on the new
+    # commit, remove and re-apply the trigger label.
     #
     # Team-membership reads need an `Organization: Members: Read`
     # token, which the default `GITHUB_TOKEN` lacks. We mint an
@@ -109,6 +138,9 @@ jobs:
     # (Members: Read scope only) and use it ONLY in this job — the
     # review job uses the default `GITHUB_TOKEN`, so the org-read
     # capability never reaches the agent step.
+    if: |
+      github.event.action != 'labeled' ||
+      github.event.label.name == inputs.label-trigger
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:
@@ -140,14 +172,17 @@ jobs:
             .github/scripts/authorize-ai-workflow.sh
           sparse-checkout-cone-mode: false
 
-      - name: Check authorization (PR author + event actor)
+      - name: Check authorization
+        # Identity-set depends on event:
+        #   labeled  →  labeler  + actor (same person; PR author bypassed)
+        #   other    →  PR author + actor (both must be trusted)
         id: check
         env:
           DEFAULT_TOKEN: ${{ github.token }}
           ORG_TOKEN: ${{ steps.app-token.outputs.token }}
           ADMIT_CLAUDE_BOT: 'true'
           USERS_TO_CHECK: |
-            ${{ github.event.pull_request.user.login }}
+            ${{ github.event.action == 'labeled' && github.event.sender.login || github.event.pull_request.user.login }}
             ${{ github.actor }}
         run: bash .ai-review-prompts/.github/scripts/authorize-ai-workflow.sh
 
