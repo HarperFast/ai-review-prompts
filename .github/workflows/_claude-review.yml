@@ -17,6 +17,9 @@ name: Claude PR Review (reusable)
 #     concurrency:
 #       group: claude-review-${{ github.event.pull_request.number }}
 #       cancel-in-progress: true
+#     # Default-deny at the caller's workflow level; this reusable's
+#     # per-job grants kick in for the actual jobs.
+#     permissions: {}
 #     jobs:
 #       review:
 #         uses: HarperFast/ai-review-prompts/.github/workflows/_claude-review.yml@<sha>
@@ -91,6 +94,14 @@ on:
         required: true
       HARPERFAST_AI_APP_PRIVATE_KEY:
         required: true
+
+# Default-deny at the workflow level. Each job below declares its own
+# minimum-scope `permissions:` block; those are the load-bearing
+# protection. This top-level `{}` is defense-in-depth — it ensures any
+# step that somehow runs outside a job-level grant (no such surface
+# exists in GH Actions today, but the pattern protects against future
+# additions) has no token at all.
+permissions: {}
 
 jobs:
   authorize:
