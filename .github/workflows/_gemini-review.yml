@@ -140,6 +140,11 @@ on:
       HARPERFAST_AI_APP_PRIVATE_KEY:
         required: true
 
+# Default-deny at the workflow level; each job declares its own
+# minimum-scope `permissions:` block. The per-job grants are the
+# load-bearing protection; this `{}` is defense-in-depth.
+permissions: {}
+
 jobs:
   authorize:
     # Same shape as _claude-review.yml's authorize job; reuses the

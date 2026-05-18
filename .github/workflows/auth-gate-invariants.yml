@@ -28,6 +28,11 @@ on:
       - '.github/scripts/authorize-ai-workflow.sh'
       - '.github/scripts/validate-auth-gate-invariants.sh'
 
+# Default-deny at the workflow level; the single job below declares
+# its own minimum-scope `permissions:` block. The per-job grant is
+# the load-bearing protection; this `{}` is defense-in-depth.
+permissions: {}
+
 jobs:
   validate:
     runs-on: ubuntu-latest
