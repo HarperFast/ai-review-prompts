@@ -6,12 +6,20 @@
 #
 # Inputs:
 #   LAYERS         — newline-separated layer names (e.g. "universal\nharper/v5")
+#   LAYERS_DIR     — optional. Directory layer files live in.
+#                    Default is `.ai-review-prompts` — the path the
+#                    `Clone review prompts` step checks out into when
+#                    a consumer calls one of the reusables in this
+#                    repo. Set to a different path (e.g. an in-tree
+#                    `.github/review-layers`) when the script is run
+#                    outside the reusable-workflow checkout shape,
+#                    such as during inline-in-consumer-repo
+#                    calibration runs.
 #   GITHUB_OUTPUT  — path to the GitHub Actions output file
 #
-# Layer files live at .ai-review-prompts/<layer>.md (the path the
-# `Clone review prompts` step checks out into). Missing layers emit
-# a workflow warning and continue; an empty composed result fails
-# the step (no review scope = no review discipline).
+# Missing layers emit a workflow warning and continue; an empty
+# composed result fails the step (no review scope = no review
+# discipline).
 set -euo pipefail
 
 OUT=/tmp/composed-scope.md
@@ -20,7 +28,7 @@ while IFS= read -r raw_layer; do
   # Trim whitespace around each layer name.
   layer="$(printf '%s' "$raw_layer" | awk '{$1=$1;print}')"
   [ -z "$layer" ] && continue
-  file=".ai-review-prompts/${layer}.md"
+  file="${LAYERS_DIR:-.ai-review-prompts}/${layer}.md"
   if [ ! -f "$file" ]; then
     echo "::warning::Review layer '$layer' not found at $file; skipping."
     continue
