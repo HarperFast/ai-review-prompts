@@ -139,14 +139,33 @@ if [ -n "$JOB_STARTED" ] && [ -n "$REVIEW_AT" ] && [ "$REVIEW_AT" \< "$JOB_START
   exit 0
 fi
 
-# Title: count findings (lines starting with `### <digit>`).
-# Zero findings always titles as "no blockers" regardless of the
-# prose phrasing — relying on a sentence-grep against the prompt's
-# `Reviewed; no blockers found.` example caused early issues (88,
-# 89, 104) to fall through to "0 finding(s) — triage pending" when
-# the bot used a slight phrasing variation. Counting the section
-# headers is deterministic.
-FINDING_COUNT=$(printf '%s\n' "$REVIEW_BODY" | grep -c '^### [0-9]' || true)
+# Title: extract the count from the standardized first-content line
+# both reviewers' prompts emit:
+#   "N blockers found."      / "1 blocker found."   -> N
+#   "Reviewed; no blockers found."                  -> 0
+# This holds even when a reviewer puts the substantive findings in
+# inline review comments and uses the top-level body as a terse
+# recap (Claude's evolved pattern on oauth#89) — the count line is
+# present regardless of where the substance lives.
+#
+# Fall back to counting `^### [0-9]\.` headers when the count line
+# isn't present (older formats / future deviations). Earlier
+# iterations (#88, #89, #104) relied SOLELY on prose-grep and fell
+# through to "0 finding(s) — triage pending" when phrasing varied —
+# the fallback to header counting is what prevents that regression
+# now.
+COUNT_LINE=$(printf '%s\n' "$REVIEW_BODY" \
+  | grep -v -E '^(\s*$|<!--)' \
+  | head -1)
+
+if echo "$COUNT_LINE" | grep -qiE 'no blockers? found'; then
+  FINDING_COUNT=0
+elif echo "$COUNT_LINE" | grep -qE '^[0-9]+ blockers? found'; then
+  FINDING_COUNT=$(echo "$COUNT_LINE" | grep -oE '^[0-9]+')
+else
+  FINDING_COUNT=$(printf '%s\n' "$REVIEW_BODY" | grep -c '^### [0-9]' || true)
+fi
+
 if [ "$FINDING_COUNT" = "0" ]; then
   COUNT_PART="no blockers"
 else
