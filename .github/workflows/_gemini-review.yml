@@ -340,13 +340,30 @@ jobs:
             The section below is empty unless this PR has a prior
             review on it with unresolved findings. If non-empty,
             those findings were flagged by an earlier run of this
-            workflow — for any that no longer apply to the current
-            diff, your summary line can cite the resolving commit
-            SHA instead of re-posting them. New findings introduced
-            since are posted normally.
+            workflow — for each, determine whether it still applies
+            to the current diff or has been resolved by intervening
+            commits.
+
+            **When the section is non-empty, your top-level summary
+            line MUST append a brief continuity note** so the update
+            is legible at a glance on the PR (otherwise the comment
+            reads like an unrelated fresh review and the user has to
+            diff comment histories to understand what changed).
+            One sentence, on the same line as the count. Examples:
+
+                Reviewed; no blockers found. Prior <K> finding(s) resolved by <sha>.
+                N blockers found. Prior <K> resolved by <sha>; new findings below.
+
+            Cite the SHA of the resolving commit when identifiable
+            (`git log` / `git blame` against the relevant file:line
+            will surface it). When the resolving commit isn't
+            clearly identifiable, say so ("prior finding no longer
+            present") rather than guessing.
 
             If the section is empty, ignore it and review the
-            current diff normally.
+            current diff normally — no continuity preamble needed
+            (this is a first review on the PR or the prior round
+            had no findings).
 
             <!-- begin prior findings -->
             ${{ steps.prior_body.outputs.body }}
