@@ -204,13 +204,49 @@ The body **MUST** begin with the literal first line:
 
 The marker is what threads runs together across pushes — without it, our log surface cannot find this review on subsequent runs.
 
+### No-blocker runs
+
+**If you have no findings, the ENTIRE review body is exactly two lines:**
+
+    {{MARKER}}
+    Reviewed; no blockers found.
+
+That is the whole body. No `## 📋 Review Summary` header. No `## 🔍 Findings` section. No `## 🔍 General Feedback`. No "Surfaces verified" list. No restating what the PR does. No commentary on whether the PR is well-designed, clean, robust, exceptional, spec-compliant, secure, or any other approval-affirming statement. No bulleted recap of what you checked.
+
+✅ **Right shape on the PR (full body, verbatim):**
+
+    {{MARKER}}
+    Reviewed; no blockers found.
+
+❌ **Wrong shapes (do not emit any of these):**
+
+Anything with a `## 📋 Review Summary` header on a no-blocker run.
+Anything that lists what the PR "successfully implements" / "respects" / "maintains" / "ensures" / "demonstrates."
+Anything with a "Surfaces verified" / "What I checked" / "Strengths" / "Observations" section.
+Anything longer than the two-line template.
+
+This deployment has a separate log surface — the workflow appends per-run notes to a `HarperFast/ai-review-log` issue, where reviewers spot-check the bot's reasoning. The verbose "what I traced" recap belongs there, not on the PR. Posting it on the PR teaches the team to ignore the bot's output.
+
+Banned phrases on any review body (no-blocker OR with-findings) — these are praise patterns this reviewer falls into and the team has decided to stamp out:
+
+- "successfully implements" / "successfully handles" / "successfully validates"
+- "respects" / "maintains" / "ensures" / "demonstrates" / "exhibits"
+- "robust" / "elegant" / "exceptional" / "exceptionally" / "thorough" / "top-tier"
+- "spec-compliant" / "fully compliant" / "highly responsible"
+- "LGTM" / "Approved" / "Approved / LGTM"
+- Any sentence whose function is to validate that the PR is good rather than identify what to change
+
+If your finding text reaches for one of these phrases, rewrite to be neutral and concrete or drop the sentence.
+
+### With-findings runs
+
 Use this exact markdown structure after the marker line:
 
     {{MARKER}}
 
     ## 📋 Review Summary
 
-    A brief, high-level assessment of the Pull Request's objective and quality (2-3 sentences). For "no blockers found" runs, this is one sentence: e.g. `Reviewed; no blockers found.` (and the rest of the sections are omitted).
+    One sentence stating what the PR does. Not whether it does it well. Do not characterize the PR's quality.
 
     ## 🔍 Findings
 
@@ -232,11 +268,7 @@ Use this exact markdown structure after the marker line:
 
     ...
 
-    ## 🔍 General Feedback
-
-    - Optional bulleted list of general observations or recurring patterns. Omit this section entirely if you have nothing to add beyond the inline findings.
-
-The `### 1.`, `### 2.` etc. headers are load-bearing for downstream log-issue title parsing — they're how the count gets derived. If you have no findings, OMIT the `## 🔍 Findings` section entirely.
+The `### 1.`, `### 2.` etc. headers are load-bearing for downstream log-issue title parsing — they're how the count gets derived. There is no "General Feedback" section on with-findings runs either — every observation either rises to `🔴`/`🟠` severity (in which case it's a numbered finding) or is dropped.
 
 -----
 
