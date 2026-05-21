@@ -155,13 +155,22 @@ fi
 # the fallback to header counting is what prevents that regression
 # now.
 COUNT_LINE=$(printf '%s\n' "$REVIEW_BODY" \
-  | grep -v -E '^(\s*$|<!--)' \
+  | grep -v -E '^([[:space:]]*$|<!--)' \
   | head -1)
 
+# Tolerate optional markdown wrapping on the count line. LLMs
+# occasionally bold or italicize first-sentence summaries
+# ("**2 blockers found.**", "_1 blocker found._"); without the
+# allowance, those would skip the count-line branch and fall
+# through to header counting (which returns 0 on Claude's recap
+# format). `[[:space:]*_]*` matches any combination of leading
+# whitespace, asterisks, and underscores. The no-blockers branch
+# is already substring-matched, so it tolerates wrapping
+# implicitly.
 if echo "$COUNT_LINE" | grep -qiE 'no blockers? found'; then
   FINDING_COUNT=0
-elif echo "$COUNT_LINE" | grep -qE '^[0-9]+ blockers? found'; then
-  FINDING_COUNT=$(echo "$COUNT_LINE" | grep -oE '^[0-9]+')
+elif echo "$COUNT_LINE" | grep -qE '^[[:space:]*_]*[0-9]+ blockers? found'; then
+  FINDING_COUNT=$(echo "$COUNT_LINE" | grep -oE '[0-9]+' | head -1)
 else
   FINDING_COUNT=$(printf '%s\n' "$REVIEW_BODY" | grep -c '^### [0-9]' || true)
 fi
