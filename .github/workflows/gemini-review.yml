@@ -1,0 +1,130 @@
+name: Gemini PR Review
+
+# Self-dogfood caller: invokes THIS repo's OWN copy of the
+# `_gemini-review.yml` reusable from the same commit. PRs to this
+# repo test their OWN reviewer changes — a PR that breaks the
+# reusable fails its own review and surfaces the bug at PR time
+# rather than after merge into a downstream consumer.
+#
+# Why same-repo local ref (`uses: ./.github/workflows/_*.yml`)?
+# Cross-repo refs (`uses: HarperFast/ai-review-prompts/...@<sha>`)
+# point at the LAST SHIPPED reviewer, defeating the dogfood property
+# — a PR's changes would never be exercised against itself. And
+# `uses:` doesn't accept expression interpolation, so we can't pin
+# the cross-repo ref to ${{ github.event.pull_request.head.sha }}
+# even if we wanted to.
+#
+# Why this is safe to run on unmerged reviewer changes: the auth
+# gate in the reusable restricts execution to the CODEOWNERS-derived
+# HarperFast trust set. Fork PRs from arbitrary actors can't run
+# the new (potentially broken) reviewer code; only trusted org
+# members can exercise it.
+#
+# Why Gemini-only (no Claude reviewer here): most PRs to this repo
+# modify `_*-review.yml` files, which is exactly the case that
+# trips claude-code-action's OIDC ref-validation gotcha
+# ("Workflow validation failed. The workflow file must exist and
+# have identical content to the version on the repository's default
+# branch."). Gemini's single-shot has no equivalent restriction and
+# runs on every PR. The auth-gate-invariants validator covers the
+# structural cases Claude would otherwise catch.
+#
+# Pre-requisites:
+#   - HARPERFAST_AI_CLIENT_ID       (org-level App Client ID)
+#   - HARPERFAST_AI_APP_PRIVATE_KEY (org-level App private key)
+#   - GEMINI_API_KEY                (per-repo; optional — missing
+#                                   key cleanly skips with a
+#                                   workflow notice)
+#   - AI_REVIEW_LOG_TOKEN           (optional — threads each run
+#                                   into a per-(PR, provider) issue
+#                                   in HarperFast/ai-review-log)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: gemini-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Same-commit local ref — see header. No `@<ref>` syntax (that's
+    # for cross-repo refs, and doesn't accept expressions). The
+    # reusable's `Clone review prompts` step then checks out the
+    # ai-review-prompts repo at the input `ai-review-prompts-ref`
+    # below; passing the PR's head SHA there ensures the layer files
+    # and scripts match the workflow's commit.
+    uses: ./.github/workflows/_gemini-review.yml
+    # Caller-side permissions at the calling-job level. Mirrors
+    # oauth's callers (see ai-review-prompts#39/#40 incident: a
+    # workflow-level `permissions: {}` caps the reusable's per-job
+    # grants below what they need and breaks the workflow at
+    # startup; the calling-job level grants the union the reusable
+    # needs without affecting the auth gate).
+    # Reference: https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    with:
+      # The reusable's `Clone review prompts (full)` step checks out
+      # ai-review-prompts at this ref into `.ai-review-prompts/`.
+      # Pass the PR's HEAD SHA so the scripts and layer files match
+      # the workflow file's commit — the same dogfood property the
+      # same-commit local `uses:` ref above gives us, extended to
+      # the file checkout the reusable does internally.
+      ai-review-prompts-ref: ${{ github.event.pull_request.head.sha }}
+      review-layers: |
+        universal
+      repo-specific-checks: |
+        ## Repo-specific checks (ai-review-prompts)
+
+        This repo is the source of the AI reviewer workflows
+        themselves. Regressions here propagate to every downstream
+        consumer (oauth, harper, harper-pro) on the next pin bump,
+        so apply these on top of the universal layer:
+
+        - **Auth gate logic.** The `auth-gate-invariants` validator
+          covers structural shape (authorize job exists, `needs:`
+          wiring, permissions). Flag SUBTLE drift the validator
+          can't see — weakening the authorize step's if-expression,
+          modifying `authorize-ai-workflow.sh` to admit identities
+          that shouldn't be admitted, broadening trust-set
+          membership beyond the CODEOWNERS-derived intent, env
+          vars or inputs that bypass the gate.
+
+        - **Prompt coherence.** Changes to layer files
+          (`universal.md`, `harper/*.md`, `repo-type/*.md`) or to
+          the prompts inside `_*-review.yml` should be internally
+          consistent. Flag contradictions (instructions that
+          forbid tool use while asking the agent to read repo
+          files), over-reaching prohibitions, ambiguous severity
+          discipline, missing markers or count-line conventions
+          that downstream scripts depend on.
+
+        - **Reusable-workflow YAML pitfalls.** `uses:` does NOT
+          support expression interpolation — the ref must be
+          literal. Same-repo callers can use
+          `./.github/workflows/X.yml` (no `@ref`). Inputs and
+          secrets must be declared in the reusable to be passed
+          by callers. `permissions:` at the workflow level CAPS
+          the reusable's per-job grants — keep caller-side
+          permissions at the calling-job level.
+
+        - **Supply-chain pinning.** GitHub Actions referenced by
+          `uses:` must use 40-character commit SHAs with a
+          version comment. Docker images in MCP/service configs
+          must use `@sha256:` digests, not `:tag`.
+
+        - **Public-repo discipline.** This repo is public — PR
+          descriptions, commit messages, and inline comments
+          should be self-contained (no internal Confluence/Jira
+          links, no internal project names, no internal-roadmap
+          framing). Flag content that would leak strategy framing
+          to anyone outside the org.
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      AI_REVIEW_LOG_TOKEN: ${{ secrets.AI_REVIEW_LOG_TOKEN }}
+      HARPERFAST_AI_CLIENT_ID: ${{ secrets.HARPERFAST_AI_CLIENT_ID }}
+      HARPERFAST_AI_APP_PRIVATE_KEY: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
