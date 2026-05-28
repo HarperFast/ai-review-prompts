@@ -28,8 +28,19 @@ For the security model and threat analysis, see the [README's Security section](
 
 **What won't auto-review:**
 
-- External contributor PRs (non-org, non-collaborator). A maintainer can opt one in via `@claude review this PR`.
+- PRs whose author isn't in the trust set above — bot PRs from `renovate[bot]` / `dependabot[bot]` / `github-actions[bot]`, and external contributors (non-org, non-collaborator). See "Opting in" below.
 - Fork PRs with any workflow change (GitHub won't give fork runs access to secrets like `ANTHROPIC_API_KEY` regardless).
+
+**Opting in untrusted-author PRs:**
+
+A trusted HarperFast member can opt one of these PRs into review by either:
+
+- Applying the **`claude-review`** label to the PR (default name; configurable per-repo via the workflow's `label-trigger` input).
+- Commenting `@claude review this PR`.
+
+The labeler / commenter — not the PR author — satisfies the auth gate, so this works for bot PRs and external contributor PRs alike. The label path is canonical for bot PRs since it doesn't require typing.
+
+To **re-run** on subsequent commits to a labeled PR: remove and re-apply the label (the `labeled` event is what re-fires the workflow).
 
 ---
 
@@ -89,18 +100,19 @@ Type `@claude` as the **first non-whitespace token** of a PR or issue comment, f
 
 Apply one of these labels to an issue, and Claude opens a PR linking back to it.
 
-| Label             | Scope                               | What's appropriate                                                             |
-| ----------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
-| `claude-fix:typo` | 1–2 line prose fix in a single file | Spelling, grammar, punctuation                                                 |
-| `claude-fix:docs` | Documentation updates               | `*.md` changes, `package.json` keyword/description edits, doc comments in code |
-| `claude-fix:deps` | Dependency version bump             | Update `package.json`, regenerate lockfile, verify `npm ci`                    |
-| `claude-fix:bug`  | Focused bug fix                     | Code change with at least one test that fails before, passes after             |
+| Label             | Scope                               | What's appropriate                                                                                            |
+| ----------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `claude-fix:typo` | 1–2 line prose fix in a single file | Spelling, grammar, punctuation                                                                                |
+| `claude-fix:docs` | Documentation updates               | `*.md` changes, `package.json` keyword/description edits, doc comments in code                                |
+| `claude-fix:deps` | Dependency version bump             | Update `package.json`, regenerate lockfile, verify `npm ci`                                                   |
+| `claude-fix:bug`  | Focused bug fix                     | Code change with at least one test that fails before, passes after                                            |
+| `claude-fix:test` | Test work — production code unchanged | Write / migrate / refactor / stabilize tests. Examples: unit → integration relocation, adding regression tests, fixing flaky tests, porting between runners. For migrations, ADD the new test in the target framework and leave the original in place for the human reviewer. |
 
 The label's suffix is a scope contract. Asks that would require judgment beyond it — new public API, architecture changes, cross-cutting refactors — are **refused**: the agent comments on the issue explaining what it sees and does NOT open a PR.
 
 **Gating:**
 
-- Only those four exact labels trigger. Typoed variants (`claude-fix:typos`, `claude-fix:foo`) don't — deliberately.
+- Only those five exact labels trigger. Typoed variants (`claude-fix:typos`, `claude-fix:foo`) don't — deliberately.
 - The issue must have been opened by an org member or collaborator. Labels on issues from external contributors are ignored.
 
 **Where the PR lands:**
@@ -115,8 +127,8 @@ The label's suffix is a scope contract. Asks that would require judgment beyond 
 
 ## What's NOT (yet) supported
 
-- **External contributor PRs** aren't auto-reviewed. A maintainer opts in via `@claude review this PR`.
-- **Feature issues** don't have a dedicated label. For anything beyond the four `claude-fix:*` scopes, use an `@claude` mention on the issue with a clear description of the desired design. Opus opt-in (`deep`) is usually warranted.
+- **External contributor PRs and bot PRs** aren't auto-reviewed. A maintainer opts in via the `claude-review` label or `@claude review this PR` (see section 1).
+- **Feature issues** don't have a dedicated label. For anything beyond the five `claude-fix:*` scopes, use an `@claude` mention on the issue with a clear description of the desired design. Opus opt-in (`deep`) is usually warranted.
 - **Cross-repo work** — the agent operates on one repo at a time. "Apply this change to harper and oauth" requires two invocations.
 - **Long-running async work** — each workflow has a timeout (15–25 min). If an ask is genuinely big, split it.
 - **Inline editing of closed / merged PRs** — the mention workflow only works on open PRs and issues.
@@ -154,7 +166,11 @@ If the bot's output is wrong in a consistent way — false-positive finding, rea
 ## Per-repo setup (maintainer checklist)
 
 1. **Secrets:** add `ANTHROPIC_API_KEY` as a repository secret. Add `AI_REVIEW_LOG_TOKEN` if the repo should log reviews to `HarperFast/ai-review-log` (optional; skipped gracefully if unset).
-2. **Labels:** create exactly these four GitHub labels on the repo: `claude-fix:typo`, `claude-fix:docs`, `claude-fix:deps`, `claude-fix:bug`. Any other spelling won't trigger the workflow.
+2. **Labels:** create these GitHub labels on the repo:
+   - `claude-fix:typo`, `claude-fix:docs`, `claude-fix:deps`, `claude-fix:bug`, `claude-fix:test` — apply to issues to trigger the issue-to-PR workflow.
+   - `claude-review` — apply to a PR to opt it into AI review when its author isn't in the auto-review trust set (bot PRs, external contributors). Override the name via the `label-trigger` input on the consumer caller workflow if you want something different.
+
+   Any other spelling won't trigger the workflow.
 3. **Branch protection:** enable on `main` and any `release_*` / `v*.x` branches. Require reviews on merge. This is load-bearing — the prompt's "don't push to main" instruction is a soft guardrail, branch protection is the real one.
 4. **CODEOWNERS:** optional but recommended — pair with "Require review from Code Owners" in branch protection.
 5. **Workflow files:** copy `examples/claude-review.yml`, `examples/claude-mention.yml`, `examples/claude-issue-to-pr.yml` into `.github/workflows/` and pin all `uses:` lines to commit SHAs. Adjust `REVIEW_LAYERS` in `claude-review.yml` for your repo (see available layers in this repo).
