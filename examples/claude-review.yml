@@ -10,7 +10,16 @@ name: Claude PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    # `labeled` is opt-in: when a trusted org member applies the
+    # `claude-review` label, this workflow fires on a PR whose author
+    # isn't in the trust set below (bot PRs from renovate / dependabot /
+    # github-actions, or external human contributors). The labeler — not
+    # the PR author — satisfies the auth gate, since they're the one
+    # making the trust gesture by applying the label.
+    #
+    # To re-run on subsequent commits to a labeled PR, remove and
+    # re-apply the label (the `labeled` event is what re-fires this).
+    types: [opened, synchronize, reopened, labeled]
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -19,13 +28,24 @@ concurrency:
 jobs:
   review:
     # REPO-SPECIFIC: adjust the gate to match who should get auto-reviewed.
-    # This gate admits PRs from org members/collaborators and from our own
-    # issue-to-PR bot (claude[bot]). External human PRs are not auto-reviewed
-    # — opt them in via an @claude mention (separate workflow) if you have one.
+    # This gate admits two paths:
+    #   - Non-`labeled` events from PRs whose AUTHOR is in the trust set
+    #     (org member/collaborator, or our own issue-to-PR bot claude[bot]).
+    #   - `labeled` events where the label name matches `claude-review` —
+    #     opts in untrusted-author PRs (renovate, dependabot, github-actions,
+    #     external human). The auth gesture here is the label application
+    #     itself: GitHub requires triage+ permission to apply labels, so the
+    #     labeler is already a trusted member. Other label events are dropped
+    #     (no spurious runs on unrelated labels).
+    # External human PRs without a `claude-review` label can also be
+    # opted in via an `@claude review this PR` mention (separate workflow).
     if: >-
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-      github.event.pull_request.author_association)
-      || github.event.pull_request.user.login == 'claude[bot]'
+      (github.event.action != 'labeled' && (
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+          github.event.pull_request.author_association)
+        || github.event.pull_request.user.login == 'claude[bot]'))
+      || (github.event.action == 'labeled'
+          && github.event.label.name == 'claude-review')
     runs-on: ubuntu-latest
     # 15 gives headroom without letting a runaway loop burn forever
     # (claude-code-action's --max-turns is the real cost ceiling).

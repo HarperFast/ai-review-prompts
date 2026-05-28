@@ -29,7 +29,7 @@ jobs:
     # — prefix matching admits typoed variants (`claude-fix:typos`,
     # `claude-fix:foo`) that the agent will waste turns interpreting.
     if: >-
-      contains(fromJSON('["claude-fix:typo","claude-fix:docs","claude-fix:deps","claude-fix:bug"]'), github.event.label.name) &&
+      contains(fromJSON('["claude-fix:typo","claude-fix:docs","claude-fix:deps","claude-fix:bug","claude-fix:test"]'), github.event.label.name) &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
       github.event.issue.author_association)
     runs-on: ubuntu-latest
@@ -119,6 +119,17 @@ jobs:
               `npm install` + verify `npm ci` works.
             - `claude-fix:bug` — a focused bug fix with at least one
               test that fails before the fix and passes after.
+            - `claude-fix:test` — test work. Write, migrate, refactor,
+              or stabilize tests. Production code under test should NOT
+              change; this label is for the test surface itself.
+              Examples: moving a test between unit/integration
+              frameworks, adding regression tests for existing
+              functions, fixing flaky tests, porting tests between
+              runners. For migrations / relocations: ADD the new test
+              in the target framework and leave the original in place
+              so the human reviewer can confirm the new test covers
+              the original's behavior — do NOT remove it in the same
+              change.
 
             Any ask that requires judgment beyond the label's scope —
             new public API, architecture changes, cross-cutting
@@ -184,6 +195,15 @@ jobs:
                  `npm run format:check` and `npm run lint`. Skip
                  `npm run build` / `npm test` / `bun test` — they
                  are not affected and waste turns.
+               - `claude-fix:test` (test work — production code under
+                 test must NOT change): run `npm run format:check` and
+                 `npm run lint`, then run the modified or added tests
+                 to confirm they pass. Prefer the narrowest test
+                 invocation your test runner supports (e.g.
+                 `npm test -- <pattern>` or `bun test <file>`) so a
+                 single test or file scope works. If `format:check`
+                 flags newly-added files, run `npm run format:write`
+                 to fix and re-check.
                - `claude-fix:deps` / `claude-fix:bug` or any change
                  that touches code or `config.yaml`: run
                  `npm run build && npm run lint && npm run format:check && npm test`
