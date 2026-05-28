@@ -71,8 +71,8 @@ jobs:
           fi
 
           if printf '%s' "$BODY" | grep -Piq '\bdeep\b'; then
-            echo "model=claude-opus-4-7" >> "$GITHUB_OUTPUT"
-            echo "Selected claude-opus-4-7 (deep requested)"
+            echo "model=claude-opus-4-8" >> "$GITHUB_OUTPUT"
+            echo "Selected claude-opus-4-8 (deep requested)"
           else
             echo "model=claude-sonnet-4-6" >> "$GITHUB_OUTPUT"
             echo "Selected claude-sonnet-4-6 (default)"
