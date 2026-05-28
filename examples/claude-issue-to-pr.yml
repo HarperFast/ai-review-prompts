@@ -28,10 +28,18 @@ jobs:
     # Use an EXPLICIT WHITELIST of labels, not `startsWith('claude-fix:')`
     # — prefix matching admits typoed variants (`claude-fix:typos`,
     # `claude-fix:foo`) that the agent will waste turns interpreting.
+    # The third condition rejects bot-applied labels: GitHub permits Apps
+    # installed with `issues: write` to apply labels, which would otherwise
+    # bypass the human-gesture trust model and self-trigger Claude (with
+    # write access — `Bash(gh pr create:*)`, `Edit`, `Write`, `Bash(git:*)`
+    # in the allowlist). `sender.type` is the User-object field (`User` /
+    # `Bot` / `Organization`); rejecting `Bot` covers GitHub Apps and
+    # legacy bot accounts.
     if: >-
       contains(fromJSON('["claude-fix:typo","claude-fix:docs","claude-fix:deps","claude-fix:bug","claude-fix:test"]'), github.event.label.name) &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-      github.event.issue.author_association)
+      github.event.issue.author_association) &&
+      github.event.sender.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
