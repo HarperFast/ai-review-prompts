@@ -12,10 +12,18 @@ on:
   pull_request:
     # `labeled` is opt-in: when a trusted org member applies the
     # `claude-review` label, this workflow fires on a PR whose author
-    # isn't in the trust set below (bot PRs from renovate / dependabot /
-    # github-actions, or external human contributors). The labeler — not
-    # the PR author — satisfies the auth gate, since they're the one
-    # making the trust gesture by applying the label.
+    # isn't in the trust set below. The labeler — not the PR author —
+    # satisfies the auth gate, since they're the one making the trust
+    # gesture by applying the label.
+    #
+    # Reachable targets: same-repo untrusted-author and bot PRs (e.g.
+    # `renovate`, `github-actions`, which open PRs from in-repo
+    # branches). NOT reachable: fork PRs (external human contributors)
+    # and `dependabot` PRs — GitHub withholds secrets (the run gets no
+    # `ANTHROPIC_API_KEY`) and hands a read-only token to those events,
+    # so the label can't enable a review. Reviewing them would need a
+    # `pull_request_target`-based trusted relay this template
+    # deliberately avoids.
     #
     # To re-run on subsequent commits to a labeled PR, remove and
     # re-apply the label (the `labeled` event is what re-fires this).
@@ -32,9 +40,11 @@ jobs:
     #   - Non-`labeled` events from PRs whose AUTHOR is in the trust set
     #     (org member/collaborator, or our own issue-to-PR bot claude[bot]).
     #   - `labeled` events where the label name matches `claude-review`
-    #     AND the labeler is not a bot — opts in untrusted-author PRs
-    #     (renovate, dependabot, github-actions, external human). The auth
-    #     gesture is the label application itself: GitHub requires triage+
+    #     AND the labeler is not a bot — opts in same-repo untrusted-
+    #     author PRs (renovate, github-actions). Fork PRs and dependabot
+    #     PRs can't be reviewed this way — GitHub withholds secrets for
+    #     them regardless of the label (see the `on:` comment above).
+    #     The auth gesture is the label application itself: GitHub requires triage+
     #     permission to apply labels, so a human labeler is already a
     #     trusted member. The `sender.type != 'Bot'` check prevents a
     #     misconfigured or compromised bot (e.g. a labeler app) from
