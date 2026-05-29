@@ -85,7 +85,7 @@ on:
         type: string
         required: true
       label-trigger:
-        description: 'Label name that opts a PR into Gemini review. Unlike _claude-review.yml (which auto-runs for trusted-author PRs and uses its label only for untrusted authors), Gemini review is PURE opt-in: the consumer caller triggers on `labeled` only, so review runs solely when this label is applied. On a `labeled` event the LABELER — not the PR author — satisfies the CODEOWNERS-derived auth gate, so this opts in bot PRs (renovate / dependabot) and external-contributor PRs alike. Default `gemini-review`. The consumer caller must include `labeled` in its `pull_request: types:` and gate its job on this label name.'
+        description: 'Label name that opts a PR into Gemini review. Unlike _claude-review.yml (which auto-runs for trusted-author PRs and uses its label only for untrusted authors), Gemini review is PURE opt-in: the consumer caller triggers on `labeled` only, so review runs solely when this label is applied. On a `labeled` event the LABELER — not the PR author — satisfies the CODEOWNERS-derived auth gate, so this opts in same-repo untrusted-author and bot PRs (e.g. renovate, which opens PRs from in-repo branches). It does NOT reach fork PRs (external contributors) or Dependabot PRs: GitHub withholds repo secrets and hands those runs a read-only token, so the App-token mint fails regardless of the label — reviewing them would need a `pull_request_target` relay this workflow deliberately avoids. Default `gemini-review`. The consumer caller must include `labeled` in its `pull_request: types:` and gate its job on this label name.'
         type: string
         default: 'gemini-review'
     secrets:
@@ -122,8 +122,11 @@ jobs:
     #     LABELER (`github.event.sender.login`) + event actor — same
     #     person. The PR-author check is bypassed; the trusted
     #     labeler applying `label-trigger` is the auth gesture. This
-    #     is the canonical Gemini path — it opts in bot PRs
-    #     (renovate / dependabot) and external-contributor PRs.
+    #     is the canonical Gemini path — it opts in same-repo
+    #     untrusted-author / bot PRs (e.g. renovate). It does NOT
+    #     reach fork PRs (external contributors) or Dependabot PRs:
+    #     GitHub withholds secrets there, so the token mint fails
+    #     regardless of the label.
     #
     #   * Non-`labeled` events (only the self-dogfood caller in THIS
     #     repo, which still runs Gemini on every PR): PR author
