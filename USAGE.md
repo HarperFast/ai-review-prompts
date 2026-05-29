@@ -168,7 +168,7 @@ If the bot's output is wrong in a consistent way — false-positive finding, rea
 1. **Secrets:** add `ANTHROPIC_API_KEY` as a repository secret. Add `AI_REVIEW_LOG_TOKEN` if the repo should log reviews to `HarperFast/ai-review-log` (optional; skipped gracefully if unset).
 2. **Labels:** create these GitHub labels on the repo:
    - `claude-fix:typo`, `claude-fix:docs`, `claude-fix:deps`, `claude-fix:bug`, `claude-fix:test` — apply to issues to trigger the issue-to-PR workflow.
-   - `claude-review` — apply to a PR to opt it into AI review when its author isn't in the auto-review trust set (bot PRs, external contributors). Override the name via the `label-trigger` input on the consumer caller workflow if you want something different.
+   - `claude-review` — apply to a PR to opt it into AI review when its author isn't in the auto-review trust set (same-repo untrusted-author / bot PRs like `renovate[bot]` / `github-actions[bot]`). Fork PRs (external contributors) and `dependabot[bot]` PRs can't be opted in — GitHub withholds secrets for those events. Override the name via the `label-trigger` input on the consumer caller workflow if you want something different.
 
    Any other spelling won't trigger the workflow.
 3. **Branch protection:** enable on `main` and any `release_*` / `v*.x` branches. Require reviews on merge. This is load-bearing — the prompt's "don't push to main" instruction is a soft guardrail, branch protection is the real one.
