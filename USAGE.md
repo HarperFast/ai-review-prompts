@@ -29,7 +29,7 @@ For the security model and threat analysis, see the [README's Security section](
 **What won't auto-review:**
 
 - PRs whose author isn't in the trust set above — bot PRs from `renovate[bot]` / `dependabot[bot]` / `github-actions[bot]`, and external contributors (non-org, non-collaborator). See "Opting in" below.
-- Fork PRs with any workflow change (GitHub won't give fork runs access to secrets like `ANTHROPIC_API_KEY` regardless).
+- Fork PRs (external contributors) and `dependabot[bot]` PRs — GitHub withholds secrets like `ANTHROPIC_API_KEY` and gives these events a read-only token, so a review can't run on them. Opting in via label or mention (below) does **not** change that.
 
 **Opting in untrusted-author PRs:**
 
@@ -38,7 +38,7 @@ A trusted HarperFast member can opt one of these PRs into review by either:
 - Applying the **`claude-review`** label to the PR (default name; configurable per-repo via the workflow's `label-trigger` input).
 - Commenting `@claude review this PR`.
 
-The labeler / commenter — not the PR author — satisfies the auth gate, so this works for bot PRs and external contributor PRs alike. The label path is canonical for bot PRs since it doesn't require typing.
+The labeler / commenter — not the PR author — satisfies the auth gate. This reaches **same-repo** untrusted-author / bot PRs (`renovate[bot]`, `github-actions[bot]`, which open PRs from in-repo branches). It does **not** reach fork PRs (external contributors) or `dependabot[bot]` PRs — GitHub withholds secrets for those regardless of the label or mention (see "What won't auto-review" above). The label path is canonical for bot PRs since it doesn't require typing.
 
 To **re-run** on subsequent commits to a labeled PR: remove and re-apply the label (the `labeled` event is what re-fires the workflow).
 
@@ -127,7 +127,7 @@ The label's suffix is a scope contract. Asks that would require judgment beyond 
 
 ## What's NOT (yet) supported
 
-- **External contributor PRs and bot PRs** aren't auto-reviewed. A maintainer opts in via the `claude-review` label or `@claude review this PR` (see section 1).
+- **Same-repo bot PRs** (`renovate[bot]`, `github-actions[bot]`) aren't auto-reviewed, but a maintainer opts them in via the `claude-review` label or `@claude review this PR` (see section 1). **Fork PRs (external contributors) and `dependabot[bot]` PRs can't be opted in** — GitHub withholds secrets for those events, so a review can't run regardless.
 - **Feature issues** don't have a dedicated label. For anything beyond the five `claude-fix:*` scopes, use an `@claude` mention on the issue with a clear description of the desired design. Opus opt-in (`deep`) is usually warranted.
 - **Cross-repo work** — the agent operates on one repo at a time. "Apply this change to harper and oauth" requires two invocations.
 - **Long-running async work** — each workflow has a timeout (15–25 min). If an ask is genuinely big, split it.
