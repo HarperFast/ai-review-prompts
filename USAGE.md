@@ -69,7 +69,7 @@ Type `@claude` as the **first non-whitespace token** of a PR or issue comment, f
 **Model selection:**
 
 - **Default: Sonnet 4.6** — fast, cheap, good for most asks (review, explain, small edits, address feedback).
-- **Opt-in: Opus 4.7** — include the word `deep` anywhere in the comment (case-insensitive, word-boundary). Use for reasoning-heavy asks: "audit this approach," "design the migration plan," etc.
+- **Opt-in: Opus 4.8** — include the word `deep` anywhere in the comment (case-insensitive, word-boundary). Use for reasoning-heavy asks: "audit this approach," "design the migration plan," etc.
 
 **What the agent can do:**
 
