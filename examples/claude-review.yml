@@ -10,7 +10,24 @@ name: Claude PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    # `labeled` is opt-in: when a trusted org member applies the
+    # `claude-review` label, this workflow fires on a PR whose author
+    # isn't in the trust set below. The labeler — not the PR author —
+    # satisfies the auth gate, since they're the one making the trust
+    # gesture by applying the label.
+    #
+    # Reachable targets: same-repo untrusted-author and bot PRs (e.g.
+    # `renovate`, `github-actions`, which open PRs from in-repo
+    # branches). NOT reachable: fork PRs (external human contributors)
+    # and `dependabot` PRs — GitHub withholds secrets (the run gets no
+    # `ANTHROPIC_API_KEY`) and hands a read-only token to those events,
+    # so the label can't enable a review. Reviewing them would need a
+    # `pull_request_target`-based trusted relay this template
+    # deliberately avoids.
+    #
+    # To re-run on subsequent commits to a labeled PR, remove and
+    # re-apply the label (the `labeled` event is what re-fires this).
+    types: [opened, synchronize, reopened, labeled]
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -19,13 +36,39 @@ concurrency:
 jobs:
   review:
     # REPO-SPECIFIC: adjust the gate to match who should get auto-reviewed.
-    # This gate admits PRs from org members/collaborators and from our own
-    # issue-to-PR bot (claude[bot]). External human PRs are not auto-reviewed
-    # — opt them in via an @claude mention (separate workflow) if you have one.
+    # This gate admits two paths:
+    #   - Non-`labeled` events from PRs whose AUTHOR is in the trust set
+    #     (org member/collaborator, or our own issue-to-PR bot claude[bot]).
+    #   - `labeled` events where the label name matches `claude-review`
+    #     AND the labeler is not a bot — opts in same-repo untrusted-
+    #     author PRs (renovate, github-actions). Fork PRs and dependabot
+    #     PRs can't be reviewed this way — GitHub withholds secrets for
+    #     them regardless of the label (see the `on:` comment above).
+    #     The auth gesture is the label application itself: GitHub requires triage+
+    #     permission to apply labels, so a human labeler is already a
+    #     trusted member. The `sender.type != 'Bot'` check prevents a
+    #     misconfigured or compromised bot (e.g. a labeler app) from
+    #     applying the label and self-triggering review. Other label events
+    #     and bot-applied labels are dropped (no spurious runs).
+    #
+    #     Trust-set caveat: the reusable `_claude-review.yml` workflow
+    #     restricts the labeler trust set further to CODEOWNERS-derived
+    #     membership via an App-token-mediated check in a dedicated
+    #     authorize job. The standalone example here trusts any human
+    #     triage+ user instead — sufficient when triage permission is
+    #     reserved for trusted collaborators, looser when triage is broadly
+    #     handed out. Tighten by switching to the reusable if your repo's
+    #     triage assignment is wider than your CODEOWNERS set.
+    # External human PRs without a `claude-review` label can also be
+    # opted in via an `@claude review this PR` mention (separate workflow).
     if: >-
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-      github.event.pull_request.author_association)
-      || github.event.pull_request.user.login == 'claude[bot]'
+      (github.event.action != 'labeled' && (
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+          github.event.pull_request.author_association)
+        || github.event.pull_request.user.login == 'claude[bot]'))
+      || (github.event.action == 'labeled'
+          && github.event.label.name == 'claude-review'
+          && github.event.sender.type != 'Bot')
     runs-on: ubuntu-latest
     # 15 gives headroom without letting a runaway loop burn forever
     # (claude-code-action's --max-turns is the real cost ceiling).
