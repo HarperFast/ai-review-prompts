@@ -50,6 +50,18 @@ This is per-PR memory. Cross-PR pattern learning happens via the workflow's log 
 - **Dependency trust.** New runtime dependencies: justified in the PR description? Trusted publisher? Any post-install scripts?
 - **Cross-site hygiene.** CSRF state where relevant? Redirect URI validation? Open-redirect paths closed?
 
+## Robustness
+
+Code that consumes external, cross-thread, or cross-process input is a recurring blind spot — a "no blockers" verdict that misses a crash, hang, or tight loop a second reviewer catches. When the diff parses or iterates a value that originates outside the function (a peer/leader response, an env var, a URL, an IPC message, a worker acknowledgement), check the failure edges:
+
+- **Unvalidated shape.** `Object.keys(x)`, `for...in`, or property access on a value that could be `null`, a non-object, or empty throws a `TypeError` and aborts the operation. Guard the shape before destructuring or iterating a response you didn't construct.
+- **Unguarded parse.** `new URL(s)`, `JSON.parse(s)`, `BigInt(s)` throw on malformed input. When the input can be malformed (env var, leader/user-supplied), wrap it with a try/catch and a defined fallback.
+- **Falsy vs nullish guards.** `if (!x)` also rejects legitimate `0`, `''`, and `false`. When zero/empty is a valid value (a size, a count, an index), guard on `== null` instead of truthiness.
+- **Missing timeout on a remote await.** Awaiting a cross-thread/cross-process acknowledgement or a network response with no timeout hangs indefinitely if the peer is slow or unresponsive. Verify a timeout plus a recovery path exists.
+- **Retry/backoff reset condition.** A backoff counter that resets on any loop activity rather than on genuine forward progress defeats exponential backoff and can spin a tight retry/log-spam loop. Verify the reset condition is "made progress," not "the loop ran."
+
+These are blockers when the bad input is reachable in production; when the path is genuinely unreachable, say why rather than flagging.
+
 ## Testing
 
 Only flag gaps the PR **itself** creates. Pre-existing coverage gaps in code the PR merely touches are NOT this PR's problem — flagging them is a scaling trap on repos that are still catching up on coverage.
@@ -87,6 +99,7 @@ Pre-existing gaps are NOT findings. "This function has no tests" on code the PR 
 
 - Pre-existing coverage gaps in code the PR merely touches but didn't add
 - Style, naming, or formatting preferences
+- **Forward-looking or speculative observations the diff doesn't make actionable** — "worth a follow-up grep," "other callers may also swallow this," notes about code outside the diff. They read as findings at triage time but block nothing. Do NOT append run-notes that restate non-blocking observations as findings — least of all on a PR that is already approved or merged. If the review has no blockers, say so in one sentence (per Output discipline) and stop; a genuinely separable follow-up belongs in the log surface or a tracking issue, not in the PR review.
 - "Consider adding a comment" / "Could be more readable"
 - Missing edge-case tests when happy-path and primary failure-path are covered
 - Minor JSDoc prose polish (the _example matching the API_ is a blocker; wording is not)
