@@ -70,7 +70,7 @@ on:
       skills-ref:
         description: 'SHA pin for HarperFast/skills (referenced when a layer points into harper-best-practices/).'
         type: string
-        default: 'd2db99bb37a6dde868cbc5ac81ca4146be8956fb'  # 1.3.0 (2026-04-16)
+        default: '7b57f1bae6c15c0c048f4db77a3f84423c3ed7d6'  # v1.7.0 (2026-05-27)
       ai-review-prompts-ref:
         description: 'SHA pin for HarperFast/ai-review-prompts (layer files + scripts). REQUIRED; pass the same SHA the caller uses in its `uses:` ref. We can''t auto-derive this — `github.workflow_ref` resolves to the CALLER''s ref in `workflow_call` context, not the called workflow''s ref.'
         type: string
@@ -397,9 +397,12 @@ jobs:
             and writes to any other path will be denied.
 
             Shared Harper best-practices are mirrored on disk at
-            `.harper-skills/harper-best-practices/rules/*.md` if a
-            layer references them and you want to drill into the
-            customer-facing source.
+            `.harper-skills/harper-best-practices/rules/*.md` — consult
+            them to ground Harper-specific judgments. Confirm a change
+            follows the idiomatic Harper pattern (tables, resources,
+            auth, caching, type-stripping, Fabric deploy) instead of
+            guessing, and treat a clear contradiction of a documented
+            best-practice as a finding.
 
             ## Layered review scope
 

@@ -79,7 +79,7 @@ on:
       skills-ref:
         description: 'SHA pin for HarperFast/skills (referenced when a layer points into harper-best-practices/). Same default as _claude-review.yml; bump together.'
         type: string
-        default: 'd2db99bb37a6dde868cbc5ac81ca4146be8956fb'  # 1.3.0 (2026-04-16)
+        default: '7b57f1bae6c15c0c048f4db77a3f84423c3ed7d6'  # v1.7.0 (2026-05-27)
       ai-review-prompts-ref:
         description: 'SHA pin for HarperFast/ai-review-prompts (layer files + scripts). REQUIRED; pass the same SHA the caller uses in its `uses:` ref. Same constraint as _claude-review.yml — `github.workflow_ref` resolves to the CALLER''s ref in `workflow_call` context, not the called workflow''s ref.'
         type: string
@@ -349,7 +349,11 @@ jobs:
             workflow-side comment manipulation). Researching the
             diff is encouraged: read files in the checked-out repo,
             use `git log` / `git blame` / `git diff` to gather
-            context, search across the codebase as needed. Just
+            context, search across the codebase as needed. For
+            Harper-specific conventions, consult the bundled
+            best-practices at
+            `.harper-skills/harper-best-practices/rules/*.md` to ground
+            your judgments instead of guessing Harper idioms. Just
             make the review TEXT your final output.
 
             **Your output must begin with the literal first line
