@@ -8,9 +8,9 @@ name: Claude PR Review (reusable)
 #     on:
 #       pull_request:
 #         # `labeled` is opt-in: when a trusted HarperFast member applies
-#         # the `claude-review` label (or whatever the `label-trigger`
-#         # input names), this workflow fires on a bot-authored PR. The
-#         # labeler — not the bot PR author — satisfies the auth gate.
+#         # the `claude-review` label, this workflow fires on a
+#         # bot-authored PR. The labeler — not the bot PR author —
+#         # satisfies the auth gate.
 #         # Useful for renovate / dependabot PRs that would otherwise
 #         # be silently skipped.
 #         types: [opened, synchronize, reopened, labeled]
@@ -75,10 +75,6 @@ on:
         description: 'SHA pin for HarperFast/ai-review-prompts (layer files + scripts). REQUIRED; pass the same SHA the caller uses in its `uses:` ref. We can''t auto-derive this — `github.workflow_ref` resolves to the CALLER''s ref in `workflow_call` context, not the called workflow''s ref.'
         type: string
         required: true
-      label-trigger:
-        description: 'Label name that gates review on PRs from untrusted authors (bots like renovate / dependabot, or any author not in the CODEOWNERS-derived trust set). When a trusted HarperFast member applies this label, the `labeled` event admits the run with the labeler — not the PR author — satisfying the auth gate. Default `claude-review`. The consumer caller must include `labeled` in its `pull_request: types:` for the event to fire.'
-        type: string
-        default: 'claude-review'
     secrets:
       ANTHROPIC_API_KEY:
         required: true
@@ -115,7 +111,7 @@ jobs:
     #     trusted user's PR branch changes the actor without changing
     #     the PR author; we want to refuse those events.
     #
-    #   * `labeled` events (one of `label-trigger`): LABELER
+    #   * `labeled` events (the `claude-review` label): LABELER
     #     (`github.event.sender.login`) + event actor — same person.
     #     This admits PRs from untrusted authors (renovate /
     #     dependabot / external contributors) when a trusted member
@@ -140,7 +136,7 @@ jobs:
     # capability never reaches the agent step.
     if: |
       github.event.action != 'labeled' ||
-      github.event.label.name == inputs.label-trigger
+      github.event.label.name == 'claude-review'
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:

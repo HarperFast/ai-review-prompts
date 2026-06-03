@@ -6,28 +6,28 @@ name: Gemini PR Review (reusable)
 # PR. Day 4 of the AI workflows plan: run both reviewers in
 # parallel on a low-stakes repo for a week to compare signal.
 #
-# Consumer caller shape (pure label opt-in — Gemini review runs ONLY
-# when a trusted member applies the `gemini-review` label; it does
-# NOT auto-run on every PR the way _claude-review.yml does for
-# trusted-author PRs). To re-review after new commits, remove and
-# re-apply the label — the `labeled` event is the only trigger:
+# Consumer caller shape. Gemini review is opt-in by default — it runs
+# only when a trusted member applies the `gemini-review` label — unless
+# the consumer sets the `GEMINI_ALWAYS_ON` repo variable to `true`, which
+# auto-runs it on every trusted-author PR (the always-on toggle; mirrors
+# _claude-review.yml's CLAUDE_ALWAYS_ON). To re-review after new commits
+# in opt-in mode, remove and re-apply the label:
 #
 #     name: Gemini PR Review
 #     on:
 #       pull_request:
-#         types: [labeled]
+#         # `vars.*` can't be read in `on:`, so list the union and gate
+#         # the job on the variable below.
+#         types: [opened, synchronize, reopened, labeled]
 #     concurrency:
 #       group: gemini-review-${{ github.event.pull_request.number }}
 #       cancel-in-progress: true
 #     jobs:
 #       review:
-#         # Pre-filter: only the trigger label, and never a bot-applied
-#         # one (a compromised labeler app can't self-trigger). The
-#         # reusable's authorize job does the real CODEOWNERS-trust check
-#         # on the labeler.
-#         if: >-
-#           github.event.label.name == 'gemini-review'
-#           && github.event.sender.type != 'Bot'
+#         # Always-on toggle. The caller does NOT name the opt-in label —
+#         # this reusable's authorize job is the single source of truth
+#         # for the `gemini-review` label AND the CODEOWNERS-trust check.
+#         if: ${{ vars.GEMINI_ALWAYS_ON == 'true' || github.event.action == 'labeled' }}
 #         uses: HarperFast/ai-review-prompts/.github/workflows/_gemini-review.yml@<sha>
 #         with:
 #           review-layers: |
@@ -37,7 +37,6 @@ name: Gemini PR Review (reusable)
 #           repo-specific-checks: |
 #             ## Repo-specific checks (Harper core)
 #             - **Linter is oxlint…** ...
-#           # label-trigger: gemini-review   # default; override to rename
 #         secrets:
 #           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 #           AI_REVIEW_LOG_TOKEN: ${{ secrets.AI_REVIEW_LOG_TOKEN }}
@@ -84,10 +83,6 @@ on:
         description: 'SHA pin for HarperFast/ai-review-prompts (layer files + scripts). REQUIRED; pass the same SHA the caller uses in its `uses:` ref. Same constraint as _claude-review.yml — `github.workflow_ref` resolves to the CALLER''s ref in `workflow_call` context, not the called workflow''s ref.'
         type: string
         required: true
-      label-trigger:
-        description: 'Label name that opts a PR into Gemini review. Unlike _claude-review.yml (which auto-runs for trusted-author PRs and uses its label only for untrusted authors), Gemini review is PURE opt-in: the consumer caller triggers on `labeled` only, so review runs solely when this label is applied. On a `labeled` event the LABELER — not the PR author — satisfies the CODEOWNERS-derived auth gate, so this opts in same-repo untrusted-author and bot PRs (e.g. renovate, which opens PRs from in-repo branches). It does NOT reach fork PRs (external contributors) or Dependabot PRs: GitHub withholds repo secrets and hands those runs a read-only token, so the App-token mint fails regardless of the label — reviewing them would need a `pull_request_target` relay this workflow deliberately avoids. Default `gemini-review`. The consumer caller must include `labeled` in its `pull_request: types:` and gate its job on this label name.'
-        type: string
-        default: 'gemini-review'
     secrets:
       GEMINI_API_KEY:
         # Optional on purpose: Gemini coverage is opt-in per repo.
@@ -121,7 +116,7 @@ jobs:
     #   * `labeled` events (the consumer's only auto-run trigger):
     #     LABELER (`github.event.sender.login`) + event actor — same
     #     person. The PR-author check is bypassed; the trusted
-    #     labeler applying `label-trigger` is the auth gesture. This
+    #     labeler applying the `gemini-review` label is the auth gesture. This
     #     is the canonical Gemini path — it opts in same-repo
     #     untrusted-author / bot PRs (e.g. renovate). It does NOT
     #     reach fork PRs (external contributors) or Dependabot PRs:
@@ -147,7 +142,7 @@ jobs:
     # the rationale.
     if: |
       github.event.action != 'labeled' ||
-      github.event.label.name == inputs.label-trigger
+      github.event.label.name == 'gemini-review'
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:

@@ -1,6 +1,6 @@
 # Using the Claude-powered workflows
 
-A consumer repo (e.g. `HarperFast/harper`, `HarperFast/oauth`) that installs the workflows from `examples/` gets three ways to interact with Claude: automatic PR review, `@claude` mention, and label-triggered issue-to-PR. This document is the day-to-day user reference — what works, how to invoke it, and what's out of scope.
+A consumer repo (e.g. `HarperFast/harper`, `HarperFast/oauth`) that installs the workflows from `examples/` gets three ways to interact with Claude: automatic PR review, `@claude` mention, and label-triggered issue-to-PR. A second reviewer, **Gemini**, can run alongside Claude on PR review — same opt-in / always-on model, its own label and toggle (see §1 "Reviewers & the always-on toggle"). This document is the day-to-day user reference — what works, how to invoke it, and what's out of scope.
 
 For the security model and threat analysis, see the [README's Security section](./README.md#security-reading-the-example-workflows-critically).
 
@@ -8,10 +8,12 @@ For the security model and threat analysis, see the [README's Security section](
 
 ## 1. Pull request review
 
-**What fires it:** opening, re-opening, or pushing to any PR from:
+**What fires it:** when the `CLAUDE_ALWAYS_ON` repo variable is `true`, opening, re-opening, or pushing to any PR from:
 
 - An org `OWNER` / `MEMBER` / `COLLABORATOR`, or
 - `claude[bot]` (so AI-authored PRs from the issue-to-PR pipeline also get reviewed)
+
+If `CLAUDE_ALWAYS_ON` is unset, Claude review is **opt-in only** — it runs solely when a maintainer applies the `claude-review` label (see "Opting in" and "Reviewers & the always-on toggle" below). HarperFast core repos set `CLAUDE_ALWAYS_ON=true`, so auto-review is the norm there.
 
 **What happens:** Claude reads the PR, applies the layered review scope (universal + Harper + repo-type), and posts one of:
 
@@ -35,12 +37,28 @@ For the security model and threat analysis, see the [README's Security section](
 
 A trusted HarperFast member can opt one of these PRs into review by either:
 
-- Applying the **`claude-review`** label to the PR (default name; configurable per-repo via the workflow's `label-trigger` input).
+- Applying the **`claude-review`** label to the PR.
 - Commenting `@claude review this PR`.
 
 The labeler / commenter — not the PR author — satisfies the auth gate. This reaches **same-repo** untrusted-author / bot PRs (`renovate[bot]`, `github-actions[bot]`, which open PRs from in-repo branches). It does **not** reach fork PRs (external contributors) or `dependabot[bot]` PRs — GitHub withholds secrets for those regardless of the label or mention (see "What won't auto-review" above). The label path is canonical for bot PRs since it doesn't require typing.
 
 To **re-run** on subsequent commits to a labeled PR: remove and re-apply the label (the `labeled` event is what re-fires the workflow).
+
+**Reviewers & the always-on toggle:**
+
+Two reviewers can run on a PR — **Claude** and **Gemini** — each independently controlled by a repo variable:
+
+| Reviewer | Variable | Opt-in label |
+| --- | --- | --- |
+| Claude | `CLAUDE_ALWAYS_ON` | `claude-review` |
+| Gemini | `GEMINI_ALWAYS_ON` | `gemini-review` |
+
+- **Always-on:** set the variable to `true` (Settings → Secrets and variables → Actions → Variables, or `gh variable set GEMINI_ALWAYS_ON --body true`). That reviewer then auto-runs on every trusted-author PR (the trust set above).
+- **Opt-in (the default when the variable is unset):** that reviewer runs only when a HarperFast org member applies its label. The labeler — not the PR author — satisfies the auth gate, so this is how you opt in same-repo bot / untrusted-author PRs.
+- The variable is a **repo setting, not code** — flip a reviewer between always-on and opt-in without a PR or a pin bump, and independently of the `uses:` pin. The caller's job `if:` reads it, identically for both reviewers (only the variable name differs): `vars.<REVIEWER>_ALWAYS_ON == 'true' || github.event.action == 'labeled'`. The caller deliberately does **not** name the opt-in label — the reusable's `authorize` job is the single source of truth for the label (`claude-review` / `gemini-review`). One consequence: GitHub can't filter label names in `on:`, so applying an *unrelated* label still starts the workflow, which the reusable then skips — a cosmetic skipped-run entry on the PR, the accepted price of keeping the label name in exactly one place.
+- The two reviewers are **independent** — set one, both, or neither; the labels don't overlap (apply both to run both).
+
+> The workflow file defaults a reviewer to **opt-in** (the `== 'true'` test is false when the variable is unset). HarperFast core repos set `CLAUDE_ALWAYS_ON=true` to keep Claude's historical always-on behavior — **set the variable before merging the caller** so Claude doesn't switch to opt-in on the transition.
 
 ---
 
@@ -165,16 +183,18 @@ If the bot's output is wrong in a consistent way — false-positive finding, rea
 
 ## Per-repo setup (maintainer checklist)
 
-1. **Secrets:** add `ANTHROPIC_API_KEY` as a repository secret. Add `AI_REVIEW_LOG_TOKEN` if the repo should log reviews to `HarperFast/ai-review-log` (optional; skipped gracefully if unset).
+1. **Secrets:** add `ANTHROPIC_API_KEY` (Claude) as a repository secret. For the Gemini reviewer, add `GEMINI_API_KEY` (a missing key skips the Gemini review cleanly with a workflow notice — safe to install the caller before the key is set). Reusable callers also need the org App secrets `HARPERFAST_AI_CLIENT_ID` / `HARPERFAST_AI_APP_PRIVATE_KEY` (used by the authorize job). Add `AI_REVIEW_LOG_TOKEN` if the repo should log reviews to `HarperFast/ai-review-log` (optional; skipped gracefully if unset).
 2. **Labels:** create these GitHub labels on the repo:
    - `claude-fix:typo`, `claude-fix:docs`, `claude-fix:deps`, `claude-fix:bug`, `claude-fix:test` — apply to issues to trigger the issue-to-PR workflow.
-   - `claude-review` — apply to a PR to opt it into AI review when its author isn't in the auto-review trust set (same-repo untrusted-author / bot PRs like `renovate[bot]` / `github-actions[bot]`). Fork PRs (external contributors) and `dependabot[bot]` PRs can't be opted in — GitHub withholds secrets for those events. Override the name via the `label-trigger` input on the consumer caller workflow if you want something different.
+   - `claude-review` — apply to a PR to opt it into Claude review when its author isn't in the auto-review trust set (same-repo untrusted-author / bot PRs like `renovate[bot]` / `github-actions[bot]`). Fork PRs (external contributors) and `dependabot[bot]` PRs can't be opted in — GitHub withholds secrets for those events.
+   - `gemini-review` — the Gemini equivalent of `claude-review`: opt a PR into Gemini review. Independent of `claude-review` (apply both to run both).
 
    Any other spelling won't trigger the workflow.
 3. **Branch protection:** enable on `main` and any `release_*` / `v*.x` branches. Require reviews on merge. This is load-bearing — the prompt's "don't push to main" instruction is a soft guardrail, branch protection is the real one.
 4. **CODEOWNERS:** optional but recommended — pair with "Require review from Code Owners" in branch protection.
-5. **Workflow files:** copy `examples/claude-review.yml`, `examples/claude-mention.yml`, `examples/claude-issue-to-pr.yml` into `.github/workflows/` and pin all `uses:` lines to commit SHAs. Adjust `REVIEW_LAYERS` in `claude-review.yml` for your repo (see available layers in this repo).
+5. **Workflow files:** copy `examples/claude-review.yml`, `examples/claude-mention.yml`, `examples/claude-issue-to-pr.yml` into `.github/workflows/` and pin all `uses:` lines to commit SHAs. Adjust `REVIEW_LAYERS` in `claude-review.yml` for your repo (see available layers in this repo). For the Gemini reviewer, add a `gemini-review.yml` caller of `_gemini-review.yml` — this repo's own `.github/workflows/gemini-review.yml` is the canonical reusable-caller shape, including the `if:` toggle; mirror your `claude-review.yml` layers + `repo-specific-checks` so the two providers are comparable on the same PR.
 6. **Caller invariants check:** add a thin `auth-gate-invariants.yml` (or similar) that calls `_validate-caller-workflows.yml` from this repo. It runs on PRs that touch `.github/workflows/claude-*.yml` and rejects: shadow jobs (a non-`uses:` job alongside the legit reusable call would run with the caller's perms and bypass the auth gate); tag/branch refs in `uses:` or `with.ai-review-prompts-ref` (mutable refs defeat SHA-pinning). Make this job a required status check on `main`.
+7. **Variables (always-on toggle):** set the `CLAUDE_ALWAYS_ON` / `GEMINI_ALWAYS_ON` repo variables to `true` for any reviewer you want to auto-run on every trusted-author PR; leave a variable unset for opt-in-only (label-triggered). HarperFast core repos set `CLAUDE_ALWAYS_ON=true` to keep Claude's always-on behavior — **set it before merging the caller** so Claude doesn't switch to opt-in on the transition. See §1 "Reviewers & the always-on toggle".
 
 ---
 
