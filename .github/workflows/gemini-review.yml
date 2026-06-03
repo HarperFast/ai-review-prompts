@@ -56,14 +56,15 @@ jobs:
   review:
     # Always-on toggle. This repo sets the `GEMINI_ALWAYS_ON` repo
     # variable to `true` so the dogfood reviewer keeps running on every
-    # PR; the `|| labeled` path lets a maintainer opt a single PR in via
-    # the `gemini-review` label when the variable isn't set. Default
-    # (variable unset) is opt-in. This is the canonical caller shape
-    # every consumer copies — identical to `claude-review.yml` except
-    # the variable name (CLAUDE_ALWAYS_ON). See USAGE.md "Always-on
-    # toggle". The reusable's authorize job still owns WHO is admitted
-    # (CODEOWNERS trust set; the labeler, not the author, on `labeled`)
-    # and matches the `gemini-review` label via its `label-trigger`.
+    # PR; otherwise it's opt-in via the `gemini-review` label. The
+    # caller does NOT name the label — the reusable's authorize job is
+    # the single source of truth for both WHO is admitted (CODEOWNERS
+    # trust set; the labeler, not the author, on `labeled`) AND which
+    # label opts in. Trade-off: GitHub can't filter label names in
+    # `on:`, so an unrelated label add still starts this workflow and
+    # the reusable then skips it — a cosmetic skipped-run, the price of
+    # keeping the label in exactly one place. Canonical caller shape;
+    # see USAGE.md "Always-on toggle".
     if: ${{ vars.GEMINI_ALWAYS_ON == 'true' || github.event.action == 'labeled' }}
     # Same-commit local ref — see header. No `@<ref>` syntax (that's
     # for cross-repo refs, and doesn't accept expressions). The
