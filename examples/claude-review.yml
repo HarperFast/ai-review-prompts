@@ -36,9 +36,21 @@ concurrency:
 jobs:
   review:
     # REPO-SPECIFIC: adjust the gate to match who should get auto-reviewed.
+    #
+    # Always-on toggle: the auto-review path below fires only when the
+    # `CLAUDE_ALWAYS_ON` repo variable is `'true'`. Leave it unset (or
+    # any value but 'true') and this reviewer is opt-in only — it runs
+    # solely when an org member applies the `claude-review` label. Set
+    # the variable in Settings → Secrets and variables → Actions →
+    # Variables (or `gh variable set CLAUDE_ALWAYS_ON --body true`); it's
+    # a repo setting, not code, so you flip modes without a PR, and it's
+    # orthogonal to the `uses:` pin. The Gemini caller uses the identical
+    # shape with `GEMINI_ALWAYS_ON`. See USAGE.md "Always-on toggle".
+    #
     # This gate admits two paths:
-    #   - Non-`labeled` events from PRs whose AUTHOR is in the trust set
-    #     (org member/collaborator, or our own issue-to-PR bot claude[bot]).
+    #   - (only when CLAUDE_ALWAYS_ON == 'true') Non-`labeled` events from
+    #     PRs whose AUTHOR is in the trust set (org member/collaborator,
+    #     or our own issue-to-PR bot claude[bot]).
     #   - `labeled` events where the label name matches `claude-review`
     #     AND the labeler is not a bot — opts in same-repo untrusted-
     #     author PRs (renovate, github-actions). Fork PRs and dependabot
@@ -62,7 +74,8 @@ jobs:
     # External human PRs without a `claude-review` label can also be
     # opted in via an `@claude review this PR` mention (separate workflow).
     if: >-
-      (github.event.action != 'labeled' && (
+      (vars.CLAUDE_ALWAYS_ON == 'true'
+        && github.event.action != 'labeled' && (
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
           github.event.pull_request.author_association)
         || github.event.pull_request.user.login == 'claude[bot]'))
