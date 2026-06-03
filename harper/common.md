@@ -2,6 +2,8 @@
 
 Version-agnostic review guidance for repos in the Harper ecosystem. The repo's own `CLAUDE.md` may duplicate or extend this — when in conflict, the repo's CLAUDE.md wins (it's closer to the source).
 
+**Be Harper-aware — defer to the canonical best-practices.** The idiomatic Harper conventions (schema/table design, automatic APIs, auth, caching, custom resources, TypeScript type-stripping, Fabric deploy) live in the `harper-best-practices` rules bundled with this review. When a change's correctness or idiom turns on a Harper convention, consult those rules rather than guessing Harper behavior — treat a clear contradiction of a documented best-practice as a finding, and don't re-derive Harper behavior the rules already specify. (Your workflow prompt says where they're mirrored on disk.)
+
 ## Meta-checks (run these before tracing internals)
 
 Before diving into line-level review of any PR, run these three meta-checks. Verifying internal consistency of the wrong target is wasted analysis; if a meta-check raises a concern, post that finding BEFORE tracing internals — it's higher signal than line-level observations on a misframed change.

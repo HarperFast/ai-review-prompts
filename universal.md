@@ -50,6 +50,18 @@ This is per-PR memory. Cross-PR pattern learning happens via the workflow's log 
 - **Dependency trust.** New runtime dependencies: justified in the PR description? Trusted publisher? Any post-install scripts?
 - **Cross-site hygiene.** CSRF state where relevant? Redirect URI validation? Open-redirect paths closed?
 
+## Robustness
+
+Code that consumes external, cross-thread, or cross-process input is a recurring blind spot — a "no blockers" verdict that misses a crash, hang, or tight loop a second reviewer catches. When the diff parses or iterates a value that originates outside the function (a peer/leader response, an env var, a URL, an IPC message, a worker acknowledgement), check the failure edges:
+
+- **Unvalidated shape.** A response you didn't construct may be `null`/`undefined` or the wrong type. `Object.keys(x)` and property access throw a `TypeError` only on a **nullish** `x`; on a non-nullish wrong type they don't throw but silently yield the wrong result (`Object.keys(123)` → `[]`, `(123).prop` → `undefined`). Either way the operation misbehaves — guard the shape (e.g. `x && typeof x === 'object'`) before destructuring, iterating, or calling `Object.keys` on it.
+- **Unguarded parse.** `new URL(s)`, `JSON.parse(s)`, `BigInt(s)` throw on malformed input. When the input can be malformed (env var, leader/user-supplied), wrap it with a try/catch and a defined fallback.
+- **Falsy vs nullish guards.** `if (!x)` also rejects legitimate `0`, `''`, and `false`. When zero/empty is a valid value (a size, a count, an index), guard on `== null` instead of truthiness.
+- **Missing timeout on a remote await.** Awaiting a cross-thread/cross-process acknowledgement or a network response with no timeout hangs indefinitely if the peer is slow or unresponsive. Verify a timeout plus a recovery path exists.
+- **Retry/backoff reset condition.** A backoff counter that resets on any loop activity rather than on genuine forward progress defeats exponential backoff and can spin a tight retry/log-spam loop. Verify the reset condition is "made progress," not "the loop ran."
+
+These are blockers when the bad input is reachable in production; when the path is genuinely unreachable, say why rather than flagging.
+
 ## Testing
 
 Only flag gaps the PR **itself** creates. Pre-existing coverage gaps in code the PR merely touches are NOT this PR's problem — flagging them is a scaling trap on repos that are still catching up on coverage.
@@ -87,6 +99,7 @@ Pre-existing gaps are NOT findings. "This function has no tests" on code the PR 
 
 - Pre-existing coverage gaps in code the PR merely touches but didn't add
 - Style, naming, or formatting preferences
+- **Forward-looking or speculative observations the diff doesn't make actionable** — "worth a follow-up grep," "other callers may also swallow this," notes about code outside the diff. They read as findings at triage time but block nothing. Do NOT append run-notes that restate non-blocking observations as findings — least of all on a PR that is already approved or merged. If the review has no blockers, say so in one sentence (per Output discipline) and stop; a genuinely separable follow-up belongs in the log surface or a tracking issue, not in the PR review.
 - "Consider adding a comment" / "Could be more readable"
 - Missing edge-case tests when happy-path and primary failure-path are covered
 - Minor JSDoc prose polish (the _example matching the API_ is a blocker; wording is not)
@@ -97,5 +110,6 @@ If a finding doesn't have concrete impact on correctness, security, contract, or
 **How to post:**
 
 - Structured format: `### <N>. <title>` + `**File:** path:line` + `**What:** …` + `**Why it matters:** …` + `**Suggested fix:** …`.
+- **Surface a real finding; never bury it.** A blocker — or a genuinely actionable concern a human should act on — must appear as a **finding in your review output**, never demoted to a run-note / "new observation" on the log surface and never dropped while you report "no blockers." **Where** the finding goes follows your workflow's posting contract, not a fixed channel: if the workflow supports inline review comments, anchor the finding to its line (threaded/resolvable) and keep the top-level comment minimal; if it doesn't, put the finding in the single top-level comment in the structured `**File:** path:line` format above. Either way, a `no blockers` summary MUST be consistent with the findings you posted — the log surface is for _what you traced_, not for _findings you declined to surface_. The dividing line from a suppressed nit is actionability on a line in this diff; speculative or out-of-diff observations stay out per "What is NOT a blocker."
 - **PR comments stay concise** — every reader pays the cost. If zero blockers, the PR comment is **one sentence** (e.g. `Reviewed; no blockers found.`). The "what I traced" calibration summary — one line per surface verified, no full re-derivation — belongs in the workflow's **log surface** (a per-PR issue threaded by a `Log review to <log-repo>` step) when one is wired. Workflows without a log surface MAY keep the tracing on the PR as a calibration aid, but only until a log surface is added.
 - Never `REQUEST_CHANGES` or `APPROVE` during calibration — comments only.
