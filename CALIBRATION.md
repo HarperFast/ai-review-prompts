@@ -8,19 +8,21 @@ Sources: [Calibration log #372](https://github.com/HarperFast/ai-review-log/issu
 
 ### Verdict mix
 
-**201 issues triaged across five daily sweeps: useful 48 · noise 129 · partial 24.** The 06-02 sweep was a 156-issue backlog catch-up; the rest are normal daily volume.
+**201 issues triaged across five daily sweeps: useful 154 · noise 23 · partial 24.** The 06-02 sweep was a 156-issue backlog catch-up; the rest are normal daily volume.
 
 | Sweep | Triaged | useful | noise | partial |
 |-------|---------|--------|-------|---------|
-| 06-02 (backlog) | 156 | 42 | 97 | 17 |
-| 06-03 | 7 | 2 | 2 | 3 |
+| 06-02 (backlog) | 156 | 125 | 14 | 17 |
+| 06-03 | 7 | 4 | 0 | 3 |
 | 06-04 | 1 | 0 | 0 | 1 |
-| 06-05 | 36 | 4 | 29 | 3 |
-| 06-06 | 1 | 0 | 1 | 0 |
+| 06-05 | 36 | 24 | 9 | 3 |
+| 06-06 | 1 | 1 | 0 | 0 |
+
+> **Verdict convention updated 2026-06-08 (mix recomputed).** Earlier sweeps counted every correct "no blockers" run as `noise`, which conflated true negatives (the reviewer correctly stayed silent on a real-code PR) with false positives (the reviewer was wrong) — corrupting the very signal-vs-noise metric this log exists to track. Under the current convention, a correct review that did substantive verification is `useful`; `noise` is reserved for vacuous runs (version/dependency/release bumps, formatting-only changes, file deletions, one-line CI pins) and genuinely wrong/irrelevant findings. The mix above is recomputed on that basis; the original tally was **useful 48 · noise 129 · partial 24**. The 23 remaining noise = 18 vacuous runs + the 3 Gemini false-positives ([#365](https://github.com/HarperFast/ai-review-log/issues/365), [#320](https://github.com/HarperFast/ai-review-log/issues/320), [#326](https://github.com/HarperFast/ai-review-log/issues/326)) + 2 cancelled runs.
 
 ### Recurring NOISE pattern (→ suppress)
 
-**Severity inflation: cosmetic / by-design / accepted-trade-off findings promoted to "blocker."** The bulk of the noise count (≈120 of 129) is *correct* "no blockers" silences on clean/additive/merged PRs — not false positives, no actionable signal. The real, recurring miscalibration lives in the partials, and it is consistently severity inflation by Claude's own reviews (human-corroborated — maintainers declined the suggestion or had already accepted the line):
+**Severity inflation: cosmetic / by-design / accepted-trade-off findings promoted to "blocker."** The actionable miscalibration this week lives in the **partials**, not the noise. Under the updated convention the correct "no blockers" runs on real-code PRs are `useful` (they did substantive verification) — they carry no prompt-tuning signal but are not a defect. The recurring miss is consistently severity inflation by Claude's own reviews (human-corroborated — maintainers declined the suggestion or had already accepted the line):
 
 - [#396](https://github.com/HarperFast/ai-review-log/issues/396) (oauth#116) — a cosmetic "skipped" CI-check entry on a label-only add flagged as a *blocker*; the caller-side label pre-filter was declined. Logged on both 06-04 and 06-05.
 - [#394](https://github.com/HarperFast/ai-review-log/issues/394) (harper-pro#280) — a stale `# Runtime stage (UBI9)` comment after a `FROM`→ubi10 bump flagged as a blocker; real but cosmetic.
