@@ -59,6 +59,7 @@ Code that consumes external, cross-thread, or cross-process input is a recurring
 - **Falsy vs nullish guards.** `if (!x)` also rejects legitimate `0`, `''`, and `false`. When zero/empty is a valid value (a size, a count, an index), guard on `== null` instead of truthiness.
 - **Missing timeout on a remote await.** Awaiting a cross-thread/cross-process acknowledgement or a network response with no timeout hangs indefinitely if the peer is slow or unresponsive. Verify a timeout plus a recovery path exists.
 - **Retry/backoff reset condition.** A backoff counter that resets on any loop activity rather than on genuine forward progress defeats exponential backoff and can spin a tight retry/log-spam loop. Verify the reset condition is "made progress," not "the loop ran."
+- **Non-critical work on a critical path.** When the diff injects a non-essential operation (cleanup, pruning, metrics, log purge) into a critical lifecycle path — startup, recovery/replay, shutdown, commit — a throw from that operation must not be able to abort the critical path. Verify it's wrapped in try/catch with the failure logged and swallowed, not left to propagate. Past miss: `purgeAgedLogs` added unguarded to the recovery/replay path, where a throw would block log replay and database startup (harper#1117, maintainer agreed and added the try/catch).
 
 These are blockers when the bad input is reachable in production; when the path is genuinely unreachable, say why rather than flagging.
 
@@ -104,6 +105,11 @@ Pre-existing gaps are NOT findings. "This function has no tests" on code the PR 
 - Missing edge-case tests when happy-path and primary failure-path are covered
 - Minor JSDoc prose polish (the _example matching the API_ is a blocker; wording is not)
 - Architectural suggestions the current code doesn't call for
+- **Cosmetic stale comments.** A code comment the diff leaves stale (e.g. `# Runtime stage (UBI9)` after a bump to ubi10) is a nit — note it inline at most, never as a blocker.
+- **By-design or pre-existing lines the PR didn't introduce.** A line the PR merely moves or retains that is intentional or already accepted elsewhere in the repo is not this PR's blocker — especially when the PR body itself flags it (e.g. "left as a default — flag if we'd rather drop it") or an identical line is accepted in a sibling file (e.g. the same `ENV HDB_ADMIN_PASSWORD=password` default present in the main Dockerfile). Confirm the PR actually introduced the line before flagging it; a pre-existing accepted trade-off is at most an observation.
+- **Cosmetic CI-check-list / "skipped"-run noise.** A "skipped" check entry or a cosmetic CI-status-list artifact (e.g. on a label-only add) is not a correctness/security/contract issue — don't emit it as a blocker.
+
+**Severity discipline.** The recurring miscalibration is severity *inflation*, not omission: a finding that is real but cosmetic, pre-existing, or an accepted trade-off gets promoted to "blocker." Hold the blocker bar at correctness / security / API-contract / integrator-misleading docs only. A real-but-non-blocking item is at most a one-line observation — never a blocker.
 
 If a finding doesn't have concrete impact on correctness, security, contract, or integrator experience — it's a nit. Don't post it.
 
