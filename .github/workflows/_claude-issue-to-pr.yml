@@ -51,9 +51,9 @@ on:
         type: string
         default: 'd2db99bb37a6dde868cbc5ac81ca4146be8956fb'  # 1.3.0 (2026-04-16)
       max-turns:
-        description: 'Per-invocation turn budget. Issue-to-PR does the most authoring work of the three modes (read, change, validate, push, PR-open) — keep this generous (72 default).'
+        description: 'Per-invocation turn budget. Issue-to-PR does the most authoring work of the three modes (read, change, validate, push, PR-open) — keep this generous (100 default). A ceiling, not a target: small labels finish well under it, so a higher ceiling is harmless for them and saves the authoring-heavy labels from running out mid-task. Pair with the prompt''s "Working efficiently" guidance (delegate exploration to sub-agents) so the budget buys progress, not spelunking.'
         type: number
-        default: 72
+        default: 100
       timeout-minutes:
         description: 'Job-level timeout for the work job. Headroom over the agent step; not the cost ceiling (max-turns is).'
         type: number
@@ -181,6 +181,18 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+    env:
+      # Model is chosen by label. The authoring-heavy labels — `:bug`
+      # (write a failing test + fix) and `:test` (write/migrate/
+      # refactor tests) — run on Opus for stronger up-front planning
+      # and code quality; the lighter labels (`:typo`, `:docs`,
+      # `:deps`) stay on Sonnet, which is plenty for one- or two-file
+      # edits. Sub-task agents still default to Haiku regardless
+      # (claude-code-action's own default), so exploration delegated
+      # via the Task tool stays cheap no matter which main-loop model
+      # is selected here. `claude-opus-4-8` is the bare model alias —
+      # no date suffix.
+      AGENT_MODEL: ${{ (endsWith(github.event.label.name, ':bug') || endsWith(github.event.label.name, ':test')) && 'claude-opus-4-8' || 'claude-sonnet-4-6' }}
     steps:
       - name: Checkout
         # Default shallow fetch (depth 1). The agent can commit and push
@@ -227,7 +239,9 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           show_full_output: true
           claude_args: |
-            --model claude-sonnet-4-6
+            # Label-scoped main-loop model (Opus for :bug/:test,
+            # Sonnet otherwise) — set in the work job's `env:` block.
+            --model ${{ env.AGENT_MODEL }}
             --max-turns ${{ inputs.max-turns }}
             # `--allowedTools` is convenience pre-approval, not a
             # security boundary. Per claude-code-action's
@@ -271,7 +285,13 @@ jobs:
             # Bun entries are present unconditionally (additive
             # pre-approval is harmless; the bun binary just isn't on
             # PATH for runs that don't set `setup-bun: true`).
-            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(mkdir:*),Bash(mv:*),Bash(cp:*),Bash(ls:*),Bash(cat:*),Bash(npm install),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*)"
+            #
+            # The read-only `gh` lookups (`gh pr list`, `gh search
+            # prs`, `gh search issues`) are pre-approved so an issue
+            # that references PRs/other issues doesn't burn a turn on
+            # a denied "list the open PRs" call and fall back to
+            # viewing each one individually.
+            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search prs:*),Bash(gh search issues:*),Bash(git:*),Bash(mkdir:*),Bash(mv:*),Bash(cp:*),Bash(ls:*),Bash(cat:*),Bash(npm install),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*)"
           prompt: |
             You were invoked because issue #${{ github.event.issue.number }}
             on ${{ github.repository }} was labeled
@@ -349,6 +369,31 @@ jobs:
             Harper-specific path applies.
 
             ${{ inputs.repo-specific-conventions }}
+
+            ## Working efficiently
+
+            You have a bounded turn budget — spend it on the change,
+            not on open-ended exploration. The most common failure
+            mode is reading far more than the task needs and running
+            out of turns before writing anything.
+
+            - Read the files named in the ask plus the repo's
+              test/code conventions, then start writing. Do NOT trace
+              runtime internals or read an entire subsystem unless a
+              concrete failure forces you to.
+            - For broad exploration — locating where something lives,
+              surveying many files, or understanding an unfamiliar
+              area — delegate to a sub-agent via the Task tool. It
+              reads in its own context and returns just the answer, so
+              one of your turns buys a lot of reading while your main
+              context stays focused on authoring.
+            - Batch independent shell lookups into a single command
+              rather than running one file per turn.
+            - If you cannot complete the change within the label's
+              scope — it depends on unmerged work, needs cross-cutting
+              changes, or the ask is ambiguous — stop and comment on
+              the issue with what you found rather than spending the
+              whole budget (see "Must NOT" below).
 
             ## Process
 
