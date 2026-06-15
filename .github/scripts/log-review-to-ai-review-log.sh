@@ -132,6 +132,16 @@ if [ -z "$REVIEW_BODY" ]; then
   exit 0
 fi
 
+# No-log marker: the review prompt tags a pass on a wholly-mechanical /
+# no-reviewable-code diff (version/CI/pin/submodule/scaffold/dead-code) with
+# `<!-- review:no-log -->`. Those carry no calibration signal, so don't create a
+# triage-only log entry for them. (A real review never emits the marker, so its
+# clean verdict is still logged.)
+if printf '%s' "$REVIEW_BODY" | grep -qF '<!-- review:no-log -->'; then
+  echo "::notice::Review carries the no-log marker (mechanical / no-reviewable-code diff); skipping log entry."
+  exit 0
+fi
+
 # ISO-8601 lexicographic compare — both are UTC timestamps in the
 # same shape, so string comparison is sound.
 if [ -n "$JOB_STARTED" ] && [ -n "$REVIEW_AT" ] && [ "$REVIEW_AT" \< "$JOB_STARTED" ]; then
