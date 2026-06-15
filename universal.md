@@ -88,7 +88,7 @@ Pre-existing gaps are NOT findings. "This function has no tests" on code the PR 
 - `dist/` compiled output.
 - **Mechanical, no-logic diffs** with no reviewable code surface: version-string-only bumps (a release `x.y.z` bump with no other change), CI action/image pin bumps, submodule-pointer-only bumps (e.g. a `core` pointer moved purely as a CI-verification vehicle), generated/scaffold READMEs, and pure dead-code / lint-only removals.
 
-**When the _entire_ diff is one of the ignored shapes above**, there is nothing to verify — the correct output is the one-sentence "no blockers" pass (per Output discipline) and **nothing on the log surface**. Do not manufacture run-notes that restate the PR body, and do not promote a lockfile/dependency observation to a finding. A clean verdict on a no-code diff carries no signal; keep it to the single line so it doesn't generate a log entry that has to be hand-triaged away.
+**When the _entire_ diff is one of the ignored shapes above**, there is nothing to verify — the correct output is the one-sentence "no blockers" pass (per Output discipline), and you MUST append the marker `<!-- review:no-log -->` on its own line at the end of the comment. That marker tells the logging step to skip creating a log entry, so a no-code diff produces no triage-only entry. Do not manufacture run-notes that restate the PR body, and do not promote a lockfile/dependency observation to a finding. (Emit the marker ONLY when the entire diff is non-reviewable; a real review — even one that finds no blockers on actual code — must NOT carry it, so its clean verdict is still logged as calibration signal.)
 
 ## Output discipline
 
