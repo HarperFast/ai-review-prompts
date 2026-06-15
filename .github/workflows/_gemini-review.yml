@@ -486,11 +486,15 @@ jobs:
           if jq -e . "$OUT" >/dev/null 2>&1; then
             RESPONSE="$(jq -r '.response // ""' "$OUT")"
           fi
-          # `summary` is the contract the post/log steps read.
+          # `summary` is the contract the post/log steps read. Use a
+          # random heredoc delimiter (same pattern as the prior-review
+          # step above) so a response whose text happens to contain the
+          # delimiter line can't collide and corrupt GITHUB_OUTPUT.
+          DELIM="GEMINI_EOF_$(openssl rand -hex 16)"
           {
-            echo "summary<<__GEMINI_EOF__"
+            echo "summary<<${DELIM}"
             printf '%s\n' "$RESPONSE"
-            echo "__GEMINI_EOF__"
+            echo "${DELIM}"
           } >> "$GITHUB_OUTPUT"
           if [ -z "$RESPONSE" ]; then
             # Empty / non-JSON output — dump both streams to the job log
