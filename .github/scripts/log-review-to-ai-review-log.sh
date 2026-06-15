@@ -137,7 +137,7 @@ fi
 # `<!-- review:no-log -->`. Those carry no calibration signal, so don't create a
 # triage-only log entry for them. (A real review never emits the marker, so its
 # clean verdict is still logged.)
-if printf '%s' "$REVIEW_BODY" | grep -qF '<!-- review:no-log -->'; then
+if [[ "$REVIEW_BODY" == *"<!-- review:no-log -->"* ]]; then
   echo "::notice::Review carries the no-log marker (mechanical / no-reviewable-code diff); skipping log entry."
   exit 0
 fi
