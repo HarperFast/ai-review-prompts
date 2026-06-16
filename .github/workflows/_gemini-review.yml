@@ -68,7 +68,7 @@ on:
         type: string
         default: 'gemini-3-flash-preview'
       gemini-cli-version:
-        description: 'Gemini CLI version pin. Accepts a tag (e.g. v0.5.0), branch, commit SHA, or "latest" / "preview" / "nightly". Pin tightly during calibration.'
+        description: 'Gemini CLI version pin, passed to `npm install --global @google/gemini-cli@<version>`. Accepts an npm version or dist-tag (e.g. `v0.5.0`, `latest`, `preview`, `nightly`). Branch / commit-SHA installs are NOT supported — the dropped run-gemini-cli action had a git-build-from-source path; the inlined npm install does not (#56). Pin tightly during calibration.'
         type: string
         default: 'latest'
       timeout-minutes:
