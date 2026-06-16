@@ -486,20 +486,24 @@ jobs:
           if jq -e . "$OUT" >/dev/null 2>&1; then
             RESPONSE="$(jq -r '.response // ""' "$OUT")"
           fi
-          # `summary` is the contract the post/log steps read. Use a
-          # random heredoc delimiter (same pattern as the prior-review
-          # step above) so a response whose text happens to contain the
-          # delimiter line can't collide and corrupt GITHUB_OUTPUT.
-          DELIM="GEMINI_EOF_$(openssl rand -hex 16)"
-          {
-            echo "summary<<${DELIM}"
-            printf '%s\n' "$RESPONSE"
-            echo "${DELIM}"
-          } >> "$GITHUB_OUTPUT"
-          if [ -z "$RESPONSE" ]; then
-            # Empty / non-JSON output — dump both streams to the job log
-            # for post-mortem (replaces the dropped action's artifact
-            # upload). summary stays empty so the post step skips.
+          # `summary` is the contract the post/log steps read. Only emit
+          # a heredoc for a non-empty response — random delimiter (same
+          # pattern as the prior-review step) so a response containing
+          # the delimiter line can't corrupt GITHUB_OUTPUT. On an empty
+          # response, write an explicitly-empty summary so the post
+          # step's `!= ''` guard skips deterministically (a heredoc of an
+          # empty value is ambiguous), and dump both streams to the job
+          # log for post-mortem (replaces the dropped action's artifact
+          # upload).
+          if [ -n "$RESPONSE" ]; then
+            DELIM="GEMINI_EOF_$(openssl rand -hex 16)"
+            {
+              echo "summary<<${DELIM}"
+              printf '%s\n' "$RESPONSE"
+              echo "${DELIM}"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "summary=" >> "$GITHUB_OUTPUT"
             echo "::warning::Gemini produced no parseable response (exit ${code})."
             echo "::group::gemini stdout"; cat "$OUT"; echo "::endgroup::"
             echo "::group::gemini stderr"; cat "$ERR"; echo "::endgroup::"
