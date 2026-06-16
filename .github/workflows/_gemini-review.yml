@@ -64,11 +64,11 @@ on:
         type: string
         default: ''
       model:
-        description: 'Gemini model id passed to run-gemini-cli. Defaults to `gemini-3-flash-preview` — Google''s current-generation mid-tier Flash, which is the apples-to-apples peer of Claude Sonnet 4.6 on `_claude-review.yml`. Preview status: Google deprecates preview models with ≥2 weeks notice and may shift behavior; in practice this model has been stable for routine use. Override to a GA model (e.g. `gemini-2.5-flash`) if preview-drift on every `pull_request` run is a concern. Reserve Pro-tier (currently `gemini-3-pro` / `gemini-2.5-pro`) for deep-review / label-triggered thorough modes (Pro mirrors Opus on the Claude side).'
+        description: 'Gemini model id passed to the Gemini CLI via the GEMINI_MODEL env. Defaults to `gemini-3-flash-preview` — Google''s current-generation mid-tier Flash, which is the apples-to-apples peer of Claude Sonnet 4.6 on `_claude-review.yml`. Preview status: Google deprecates preview models with ≥2 weeks notice and may shift behavior; in practice this model has been stable for routine use. Override to a GA model (e.g. `gemini-2.5-flash`) if preview-drift on every `pull_request` run is a concern. Reserve Pro-tier (currently `gemini-3-pro` / `gemini-2.5-pro`) for deep-review / label-triggered thorough modes (Pro mirrors Opus on the Claude side).'
         type: string
         default: 'gemini-3-flash-preview'
       gemini-cli-version:
-        description: 'Gemini CLI version pin. Accepts a tag (e.g. v0.5.0), branch, commit SHA, or "latest" / "preview" / "nightly". Pin tightly during calibration.'
+        description: 'Gemini CLI version pin, passed to `npm install --global @google/gemini-cli@<version>`. Accepts an npm version or dist-tag (e.g. `v0.5.0`, `latest`, `preview`, `nightly`). Branch / commit-SHA installs are NOT supported — the dropped run-gemini-cli action had a git-build-from-source path; the inlined npm install does not (#56). Pin tightly during calibration.'
         type: string
         default: 'latest'
       timeout-minutes:
@@ -208,7 +208,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      id-token: write # required by run-gemini-cli for OIDC
+      # (no id-token: write — that was only for run-gemini-cli's GCP
+      # OIDC path, dropped in #56. We authenticate the CLI with
+      # GEMINI_API_KEY. Callers may drop it from their gemini-review.yml
+      # too, though an extra grant there is harmless.)
 
     steps:
       - name: Checkout
@@ -286,35 +289,52 @@ jobs:
             echo "${DELIM}"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Install Gemini CLI
+        # Inlined replacement for google-github-actions/run-gemini-cli
+        # (issue #56). That composite action pulls in nested actions
+        # Google won't SHA-pin (`google-github-actions/auth@v3`,
+        # `actions/upload-artifact@v6`, both `# ratchet:exclude`), which
+        # harper's transitive SHA-pin policy rejects at action-
+        # resolution time — failing the whole workflow before any step
+        # runs. We only ever used the action as a thin single-shot
+        # runner (install the CLI, run one `--prompt`, read the text
+        # back), so we own those two steps directly here: no
+        # third-party action, no transitive-pin surface, and harper's
+        # guardrails stay strict. Uses the runner's preinstalled
+        # Node + npm.
+        shell: bash
+        env:
+          GEMINI_CLI_VERSION: ${{ inputs.gemini-cli-version }}
+        run: |
+          set -euo pipefail
+          node --version
+          # Accepts an npm version/tag or dist-tag (latest / preview /
+          # nightly); default 'latest'. Branch/SHA source installs (the
+          # dropped action's git-build path) are not supported here —
+          # pin to a published version.
+          npm install --silent --no-audit --prefer-offline --global "@google/gemini-cli@${GEMINI_CLI_VERSION:-latest}"
+          gemini --version || echo "::warning::gemini --version unavailable"
+
       - name: Run Gemini review
         id: gemini-review
-        # Pinned to v0.1.22 (2026-04-24). `gemini_cli_version` (input
-        # below) is separate — it pins the CLI binary the action
-        # installs, not the action wrapper itself.
-        #
-        # The action invokes `gemini --prompt … --output-format json`
-        # which is SINGLE-SHOT text completion — the agent CAN'T
-        # call shell tools or `gh pr comment` like Claude can via
-        # claude-code-action's agentic loop. The agent's job is to
-        # produce the review TEXT (starting with the marker line);
-        # the workflow's next step posts it on the agent's behalf.
-        # See the prompt below for the agent's contract and the
-        # `Post Gemini review comment` step for the post mechanism.
-        uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
+        # Single-shot text completion: `gemini --yolo --prompt …
+        # --output-format json`. Gemini CANNOT call shell tools or
+        # `gh pr comment` from inside the prompt (unlike
+        # claude-code-action's agentic loop), so its whole job is to
+        # emit the review TEXT (starting with the marker line); the next
+        # step posts it on the agent's behalf. `--yolo` auto-approves
+        # the CLI's own read/git tool calls so it can research the diff
+        # in the checked-out repo. Model is selected via GEMINI_MODEL
+        # (same mechanism the dropped action used). The `summary` step
+        # output and this step's `outcome` are what the post/log steps
+        # below consume — keep the id and output name stable.
+        shell: bash
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ inputs.model }}
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
           GITHUB_TOKEN: ${{ github.token }}
-        with:
-          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          gemini_model: ${{ inputs.model }}
-          gemini_cli_version: ${{ inputs.gemini-cli-version }}
-          # Upload the action's stdout/stderr/telemetry as workflow
-          # artifacts so we can post-mortem when the agent produces
-          # unexpected output (empty response, missing marker,
-          # etc.). Cheap to enable; only retained per the workflow's
-          # default artifact retention.
-          upload_artifacts: 'true'
-          prompt: |
+          PROMPT: |
             You are reviewing pull request
             #${{ github.event.pull_request.number }} on
             ${{ github.repository }}. The PR branch is already
@@ -454,6 +474,43 @@ jobs:
             into that comment with `**File:** path:line` references.
 
             Cap the review at 10 findings.
+        run: |
+          set -uo pipefail
+          OUT="$(mktemp)"; ERR="$(mktemp)"
+          trap 'rm -f "$OUT" "$ERR"' EXIT
+          # Single-shot review. Capture the CLI's exit code but don't
+          # abort here — we still want to parse output and surface the
+          # streams for triage before propagating a failure.
+          gemini --yolo --prompt "$PROMPT" --output-format json >"$OUT" 2>"$ERR"; code=$?
+          RESPONSE=""
+          if jq -e . "$OUT" >/dev/null 2>&1; then
+            RESPONSE="$(jq -r '.response // ""' "$OUT")"
+          fi
+          # `summary` is the contract the post/log steps read. Only emit
+          # a heredoc for a non-empty response — random delimiter (same
+          # pattern as the prior-review step) so a response containing
+          # the delimiter line can't corrupt GITHUB_OUTPUT. On an empty
+          # response, write an explicitly-empty summary so the post
+          # step's `!= ''` guard skips deterministically (a heredoc of an
+          # empty value is ambiguous), and dump both streams to the job
+          # log for post-mortem (replaces the dropped action's artifact
+          # upload).
+          if [ -n "$RESPONSE" ]; then
+            DELIM="GEMINI_EOF_$(openssl rand -hex 16)"
+            {
+              echo "summary<<${DELIM}"
+              printf '%s\n' "$RESPONSE"
+              echo "${DELIM}"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "summary=" >> "$GITHUB_OUTPUT"
+            echo "::warning::Gemini produced no parseable response (exit ${code})."
+            echo "::group::gemini stdout"; cat "$OUT"; echo "::endgroup::"
+            echo "::group::gemini stderr"; cat "$ERR"; echo "::endgroup::"
+          fi
+          # Propagate the CLI's exit so this step's `outcome` (read by
+          # the log step as REVIEW_STATUS) reflects a real failure.
+          exit "$code"
 
       - name: Post Gemini review comment
         # The Gemini step above runs in single-shot text-completion
