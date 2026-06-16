@@ -6,11 +6,17 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/lib.sh"
 SCRIPT="$DIR/../.github/scripts/compose-review-scope.sh"
 
+# Clean up every temp file/dir we create, on exit.
+TMPS=()
+cleanup() { [ "${#TMPS[@]}" -gt 0 ] && rm -rf "${TMPS[@]}"; }
+trap cleanup EXIT
+
 # Run the script against $LDIR with a LAYERS string; leaves the script's
 # output file path in $OUT_FILE and captures stdout/stderr to temp files.
 run_compose() { # <layers-string>
   OUT_FILE="$(mktemp)"
   LOG_FILE="$(mktemp)"
+  TMPS+=("$OUT_FILE" "$LOG_FILE")
   # The script echoes ::warning:: annotations to stdout, so capture
   # stdout+stderr combined for log assertions.
   LAYERS="$1" LAYERS_DIR="$LDIR" GITHUB_OUTPUT="$OUT_FILE" \
@@ -28,6 +34,7 @@ extract_composed() { # <github-output-file>
 }
 
 LDIR="$(mktemp -d)"
+TMPS+=("$LDIR")
 printf 'UNIVERSAL CONTENT\n' > "$LDIR/universal.md"
 mkdir -p "$LDIR/harper"
 printf 'HARPER V5 CONTENT\n' > "$LDIR/harper/v5.md"

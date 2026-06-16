@@ -22,6 +22,7 @@ run_parse() { # <comment-body>
   BODY="$1" GITHUB_OUTPUT="$out" bash "$SCRIPT" >/dev/null 2>&1
   proceed="$(grep -E '^proceed=' "$out" | tail -1 | cut -d= -f2-)"
   model="$(grep -E '^model=' "$out" | tail -1 | cut -d= -f2-)"
+  rm -f "$out"
   printf '%s|%s' "${proceed:-}" "${model:-}"
 }
 
