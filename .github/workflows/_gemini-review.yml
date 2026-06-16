@@ -534,17 +534,23 @@ jobs:
             RESPONSE="$(jq -r '.response // ""' "$OUT")"
           fi
           # Split the response at the run-notes sentinel (#29): the part
-          # BEFORE `<!-- gemini-run-notes:v1 -->` is the PR comment; the
-          # part AFTER the marker is structured run notes that go to the
-          # ai-review-log issue, NOT the PR. The log step picks up
+          # BEFORE the `<!-- gemini-run-notes:v1 -->` line is the PR
+          # comment; the part AFTER it is structured run notes that go to
+          # the ai-review-log issue, NOT the PR. The log step picks up
           # $RUNNER_TEMP/gemini-review-notes.md (skips it if absent), so
           # this degrades gracefully: no marker -> the whole response
           # stays the PR comment and no notes file is written.
+          #
+          # Match the sentinel ONLY as a whole line (trimmed), never as a
+          # substring: the review text may legitimately *mention* the
+          # marker inline (e.g. when reviewing this workflow), and a
+          # substring split there would truncate the PR comment and
+          # misroute real findings into the log (Codex P2 on #29).
           NOTES_MARKER='<!-- gemini-run-notes:v1 -->'
           COMMENT="$RESPONSE"
-          if [ -n "$RESPONSE" ] && printf '%s\n' "$RESPONSE" | grep -qF "$NOTES_MARKER"; then
-            COMMENT="$(printf '%s\n' "$RESPONSE" | awk -v m="$NOTES_MARKER" 'index($0,m){exit} {print}')"
-            printf '%s\n' "$RESPONSE" | awk -v m="$NOTES_MARKER" 'index($0,m){f=1; next} f{print}' > "${RUNNER_TEMP:-/tmp}/gemini-review-notes.md"
+          if [ -n "$RESPONSE" ] && printf '%s\n' "$RESPONSE" | awk -v m="$NOTES_MARKER" '{t=$0; sub(/^[ \t]+/,"",t); sub(/[ \t]+$/,"",t)} t==m{hit=1} END{exit(hit?0:1)}'; then
+            COMMENT="$(printf '%s\n' "$RESPONSE" | awk -v m="$NOTES_MARKER" '{t=$0; sub(/^[ \t]+/,"",t); sub(/[ \t]+$/,"",t)} t==m{exit} {print}')"
+            printf '%s\n' "$RESPONSE" | awk -v m="$NOTES_MARKER" '{t=$0; sub(/^[ \t]+/,"",t); sub(/[ \t]+$/,"",t)} f{print} t==m{f=1}' > "${RUNNER_TEMP:-/tmp}/gemini-review-notes.md"
           fi
           # `summary` is the contract the post/log steps read — the PR
           # comment part only (notes split off above). Only emit a
