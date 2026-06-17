@@ -19,6 +19,7 @@ These cover scripts that are deterministic text/file transforms — no
 
 - `compose-review-scope.sh` — layer files → composed scope
 - `parse-claude-mention.sh` — comment body → proceed / model decision
+- `split-gemini-response.sh` — review response → PR comment + run-notes file (whole-line sentinel split)
 
 The **gh-orchestration** scripts (`post-review-comment.sh`,
 `find-prior-review-comment.sh`, `log-review-to-ai-review-log.sh`) are
