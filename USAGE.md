@@ -15,14 +15,15 @@ For the security model and threat analysis, see the [README's Security section](
 
 If `CLAUDE_ALWAYS_ON` is unset, Claude review is **opt-in only** — it runs solely when a maintainer applies the `claude-review` label (see "Opting in" and "Reviewers & the always-on toggle" below). HarperFast core repos set `CLAUDE_ALWAYS_ON=true`, so auto-review is the norm there.
 
-**What happens:** Claude reads the PR, applies the layered review scope (universal + Harper + repo-type), and posts one of:
+**What happens:** Claude reads the PR, applies the layered review scope (universal + Harper + repo-type), and posts:
 
-- **`No blockers found.`** — followed by an optional short "here's what I traced" summary so you can spot-check the reasoning. No other noise.
+- **`No blockers found.`** when nothing gates the merge — a one-sentence comment (the "what I traced" tracing goes to the ai-review-log issue, not the PR).
 - **Blocker findings** — a single top-level summary comment listing each finding as `### N. <title>` with `**File:** path:line`, plus **inline comments** anchored to specific code lines in the diff.
+- **Non-blocking Suggestions** (optional, ≤3 curated) — concrete, actionable improvements (hot-path perf, reuse over reimplementation, a concrete maintainability issue), posted as inline `Suggestion (non-blocking):` comments (or a `### Suggestions (non-blocking)` section where inline isn't available). They never gate the merge and may accompany a `No blockers found.` run.
 
 **Severity discipline:**
 
-- Posts blocker-severity only: correctness bugs, security issues, broken public API contracts, missing tests the PR itself should have added, misleading docs.
+- Posts blockers (correctness bugs, security issues, broken public API contracts, missing tests the PR itself should have added, misleading docs) — plus, optionally, the curated non-blocking Suggestions described above.
 - Skips nits (style, naming, "consider a comment", missing edge-case tests when happy-path + primary failure-path are covered, speculative architecture).
 - Pre-existing coverage gaps in code the PR merely touches are explicitly NOT blockers.
 
