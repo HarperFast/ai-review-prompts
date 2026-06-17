@@ -1,0 +1,28 @@
+name: Script tests
+
+# Runs the zero-dependency bash unit tests for .github/scripts/ on every
+# PR. Deliberately NOT `paths:`-filtered: a required status check gated by
+# `paths:` stays stuck "pending" on PRs that don't touch those paths and
+# blocks them from merging (a GitHub footgun), so leaving it always-on is
+# what makes it safe to mark as a required check on `main`. The job is
+# seconds-fast and zero-dependency, so always running it costs nothing.
+# Scope is PURE-LOGIC only (no `gh` / network) — the gh-orchestration
+# scripts (post-review-comment, find-prior-review-comment,
+# log-review-to-ai-review-log) are exercised by the live review dogfood
+# instead. See tests/README.md.
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run script unit tests
+        run: bash tests/run.sh

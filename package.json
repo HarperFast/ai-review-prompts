@@ -21,6 +21,7 @@
 		"url": "https://github.com/HarperFast/ai-review-prompts.git"
 	},
 	"scripts": {
+		"test": "bash tests/run.sh",
 		"format:check": "prettier --check .",
 		"format:write": "prettier --write ."
 	},
