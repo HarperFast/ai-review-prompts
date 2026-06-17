@@ -446,6 +446,19 @@ jobs:
             Reviewed; no blockers found.
             ```
 
+            **Non-blocking Suggestions** (per "What's a non-blocking
+            Suggestion" in the layered scope above): a no-blockers run
+            MAY still carry up to 3 curated suggestions. Put them in a
+            single `### Suggestions (non-blocking)` section, one bullet
+            each (`path:line — improvement (benefit)`). This section is
+            part of the **PR comment** — it MUST appear BEFORE the
+            `<!-- gemini-run-notes:v1 -->` marker (see "## After
+            reviewing"); never place it inside the run notes, or the
+            split routes your suggestions to the log instead of the PR.
+            Suggestions are NOT findings: do not give them the
+            `### <N>.` numbered header (that would inflate the log's
+            finding count) and never list them as blockers.
+
             **For runs with findings, each finding uses the
             `### <N>. <Title>` format from the universal review
             scope above** (`**File:** path:line` + `**What:** …` +
@@ -482,9 +495,11 @@ jobs:
 
             ## After reviewing: capture learnings for the log surface
 
-            The PR comment above is for the PR author — keep it concise.
-            Structured run notes and learnings from this run go to the
-            per-PR ai-review-log issue, NOT the PR comment. The channel
+            The PR comment above — your review text plus any
+            `### Suggestions (non-blocking)` section — is for the PR
+            author; keep it concise. ONLY the run notes below go to the
+            log. Structured run notes and learnings from this run go to
+            the per-PR ai-review-log issue, NOT the PR comment. The channel
             is a SECOND sentinel in this same response: after your
             review text, emit a line containing exactly
             `<!-- gemini-run-notes:v1 -->`, then the run-notes markdown
