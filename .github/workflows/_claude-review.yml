@@ -466,7 +466,7 @@ jobs:
               Use `--body-file` (or `gh api … -F body=@<file>`) for
               large bodies that hit shell argument limits.
 
-            **For "no blockers" runs, the PR comment is one sentence.**
+            **For "no blockers" runs, the top-level PR comment is one sentence.**
             This overrides the universal scope's
             `summary is welcome during calibration` allowance — this
             workflow has a log surface (the next workflow step threads

@@ -439,7 +439,7 @@ jobs:
             PR's intent, don't recap the diff, don't grade the
             author's reasoning — focus on what to change.
 
-            **For "no blockers" runs, the comment is one sentence**:
+            **For "no blockers" runs with no suggestions, the comment is one sentence**:
 
             ```
             <!-- gemini-review:v1 -->

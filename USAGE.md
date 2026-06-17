@@ -17,7 +17,7 @@ If `CLAUDE_ALWAYS_ON` is unset, Claude review is **opt-in only** — it runs sol
 
 **What happens:** Claude reads the PR, applies the layered review scope (universal + Harper + repo-type), and posts:
 
-- **`No blockers found.`** when nothing gates the merge — a one-sentence comment (the "what I traced" tracing goes to the ai-review-log issue, not the PR).
+- **`No blockers found.`** when nothing gates the merge — a one-sentence summary (the "what I traced" tracing goes to the ai-review-log issue, not the PR).
 - **Blocker findings** — a single top-level summary comment listing each finding as `### N. <title>` with `**File:** path:line`, plus **inline comments** anchored to specific code lines in the diff.
 - **Non-blocking Suggestions** (optional, ≤3 curated) — concrete, actionable improvements (hot-path perf, reuse over reimplementation, a concrete maintainability issue), posted as inline `Suggestion (non-blocking):` comments (or a `### Suggestions (non-blocking)` section where inline isn't available). They never gate the merge and may accompany a `No blockers found.` run.
 
