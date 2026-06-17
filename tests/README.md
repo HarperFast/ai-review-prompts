@@ -7,9 +7,10 @@ npm test          # or: bash tests/run.sh
 ```
 
 `tests/run.sh` runs every `tests/*.test.sh` in its own process and exits
-non-zero if any fail. CI runs it via `.github/workflows/tests.yml` on PRs
-that touch the scripts or tests. No framework / dependency — just bash +
-the `tests/lib.sh` assertion helpers.
+non-zero if any fail. CI runs it via `.github/workflows/tests.yml` on
+every PR (no `paths:` filter — so it can safely be a required check; see
+the workflow header). No framework / dependency — just bash + the
+`tests/lib.sh` assertion helpers.
 
 ## Scope: pure logic only
 
