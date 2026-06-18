@@ -99,6 +99,42 @@ format_body() {
 # --- main (network) -------------------------------------------------
 
 main() {
+  # We match our own comments on the marker PREFIX (the marker minus its
+  # ` -->` close), not the full marker: format_body emits
+  # `<!-- gemini-inline-item:v1 gikey=<key> -->`, so the closed full
+  # marker is never a substring of a posted body — filtering on the full
+  # marker matches nothing (caught by the dogfood on the introducing PR).
+  local marker_prefix="${INLINE_ITEM_MARKER% -->}"
+
+  # Clear our own inline comments left by SUPERSEDED commits (a prior push
+  # or rebase) FIRST — unconditionally, before we look at this run's items.
+  # A clean re-review (no new inline items) must still retire the prior
+  # run's now-moot comments; gating this behind "there are items to post"
+  # left stale suggestions lingering after a clean pass. Across pushes they
+  # otherwise pile up as near-duplicates: the agent re-words suggestions
+  # run to run (so the (path,line,title) dedup below can't catch them) and
+  # GitHub re-anchors a shifted line instead of marking it outdated.
+  # Comments on the CURRENT head are left alone — the dedup preserves any
+  # the author resolved. Best-effort: only ever touches OUR marker'd
+  # comments, never fails the run. Guarded on a non-empty HEAD_SHA so a
+  # missing value can't select (and delete) everything.
+  if [ -n "${HEAD_SHA:-}" ]; then
+    local stale_ids cleared=0 sid
+    stale_ids=$(gh api --paginate \
+      "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
+      | jq -r --arg p "$marker_prefix" --arg h "$HEAD_SHA" \
+        '.[] | select((.body // "") | contains($p)) | select(.original_commit_id != $h) | .id' \
+      || true)
+    if [ -n "$stale_ids" ]; then
+      while read -r sid; do
+        [ -z "$sid" ] && continue
+        gh api -X DELETE "repos/${GITHUB_REPOSITORY}/pulls/comments/${sid}" >/dev/null 2>&1 \
+          && cleared=$((cleared + 1)) || true
+      done <<< "$stale_ids"
+      echo "Cleared ${cleared} stale inline comment(s) from superseded commits."
+    fi
+  fi
+
   local file="${INLINE_FILE:-}"
   if [ -z "$file" ] || [ ! -s "$file" ]; then
     echo "::notice::No inline-comments block to post (INLINE_FILE absent/empty)."
@@ -127,41 +163,8 @@ main() {
     return 0
   fi
 
-  # We match our own comments on the marker PREFIX (the marker minus its
-  # ` -->` close), not the full marker: format_body emits
-  # `<!-- gemini-inline-item:v1 gikey=<key> -->`, so the closed full
-  # marker is never a substring of a posted body — filtering on the full
-  # marker matches nothing (caught by the dogfood on the introducing PR).
-  local marker_prefix="${INLINE_ITEM_MARKER% -->}"
-
-  # First, clear our own inline comments left by SUPERSEDED commits (a
-  # prior push or rebase). They anchor to a commit that is no longer head,
-  # so across pushes they pile up as near-duplicates of whatever the
-  # current run re-raises (the agent re-words suggestions run to run, so
-  # the per-item dedup below can't catch them, and GitHub re-anchors a
-  # shifted line rather than marking it outdated). Deleting the
-  # stale-commit ones keeps the inline surface scoped to the current head.
-  # Comments on the CURRENT head are left alone — the dedup below stops a
-  # same-commit re-run from duplicating them and preserves any the author
-  # resolved. Best-effort: only ever touches OUR marker'd comments, never
-  # fails the run.
-  local stale_ids cleared=0 sid
-  stale_ids=$(gh api --paginate \
-    "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
-    | jq -r --arg p "$marker_prefix" --arg h "$HEAD_SHA" \
-      '.[] | select((.body // "") | contains($p)) | select(.original_commit_id != $h) | .id' \
-    || true)
-  if [ -n "$stale_ids" ]; then
-    while read -r sid; do
-      [ -z "$sid" ] && continue
-      gh api -X DELETE "repos/${GITHUB_REPOSITORY}/pulls/comments/${sid}" >/dev/null 2>&1 \
-        && cleared=$((cleared + 1)) || true
-    done <<< "$stale_ids"
-    echo "Cleared ${cleared} stale inline comment(s) from superseded commits."
-  fi
-
-  # Then collect the keys still present (current-head comments) so a
-  # same-commit re-run doesn't re-post an identical item.
+  # Collect the keys still present (current-head comments) so a same-commit
+  # re-run doesn't re-post an identical item.
   local existing_keys
   existing_keys=$(gh api --paginate \
     "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
