@@ -31,15 +31,22 @@
 #   title — short headline
 #   body  — the detail (what/why/fix, or improvement/benefit)
 #
-# Idempotency: each posted comment carries a hidden
-# `gikey=<hash(path|line|title)>` token inside the item marker. Before
-# posting, existing bot comments carrying our marker are read and
-# their keys collected; an item whose key already exists is skipped.
-# That suppresses exact re-posts on a same-commit re-run or an
-# unchanged line across pushes. When a line genuinely moves, its key
-# changes, so the comment re-posts at the new line and GitHub marks
-# the superseded one "outdated" — the same post-fresh/outdate model
-# the Claude leg documents.
+# Idempotency / no pile-up across re-reviews — two mechanisms:
+#   1. Stale-commit sweep. At the start of a run, our own inline comments
+#      that anchor to a commit other than the current head (left by a
+#      prior push or rebase) are deleted. This is what stops re-worded
+#      suggestions from accumulating push over push — the agent rephrases
+#      run to run, and GitHub re-anchors a shifted line instead of marking
+#      it outdated, so without this they stack.
+#   2. Same-commit dedup. Each posted comment carries a hidden
+#      `gikey=<hash(path|line|title)>` token. After the sweep, the keys
+#      still present (current-head comments) are collected, and an item
+#      whose key already exists is skipped — so a same-commit re-run
+#      doesn't duplicate, and a thread the author already resolved is left
+#      untouched rather than resurrected.
+# Net: the inline surface tracks the latest review of the current head,
+# the way the top-level comment is edited in place. Both steps only ever
+# act on OUR marker'd comments.
 #
 # Inputs (env):
 #   GH_TOKEN            — token with `pull-requests: write`
@@ -120,13 +127,41 @@ main() {
     return 0
   fi
 
-  # Collect keys already posted by us (dedup across re-runs/pushes).
-  # Match on the marker PREFIX (the marker minus its ` -->` close), not
-  # the full marker: format_body emits `<!-- gemini-inline-item:v1
-  # gikey=<key> -->`, so the closed full marker is never a substring of
-  # a posted body — filtering on it would match nothing and dedup would
-  # silently never fire (caught by the dogfood on this PR).
+  # We match our own comments on the marker PREFIX (the marker minus its
+  # ` -->` close), not the full marker: format_body emits
+  # `<!-- gemini-inline-item:v1 gikey=<key> -->`, so the closed full
+  # marker is never a substring of a posted body — filtering on the full
+  # marker matches nothing (caught by the dogfood on the introducing PR).
   local marker_prefix="${INLINE_ITEM_MARKER% -->}"
+
+  # First, clear our own inline comments left by SUPERSEDED commits (a
+  # prior push or rebase). They anchor to a commit that is no longer head,
+  # so across pushes they pile up as near-duplicates of whatever the
+  # current run re-raises (the agent re-words suggestions run to run, so
+  # the per-item dedup below can't catch them, and GitHub re-anchors a
+  # shifted line rather than marking it outdated). Deleting the
+  # stale-commit ones keeps the inline surface scoped to the current head.
+  # Comments on the CURRENT head are left alone — the dedup below stops a
+  # same-commit re-run from duplicating them and preserves any the author
+  # resolved. Best-effort: only ever touches OUR marker'd comments, never
+  # fails the run.
+  local stale_ids cleared=0 sid
+  stale_ids=$(gh api --paginate \
+    "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
+    | jq -r --arg p "$marker_prefix" --arg h "$HEAD_SHA" \
+      '.[] | select((.body // "") | contains($p)) | select(.original_commit_id != $h) | .id' \
+    || true)
+  if [ -n "$stale_ids" ]; then
+    while read -r sid; do
+      [ -z "$sid" ] && continue
+      gh api -X DELETE "repos/${GITHUB_REPOSITORY}/pulls/comments/${sid}" >/dev/null 2>&1 \
+        && cleared=$((cleared + 1)) || true
+    done <<< "$stale_ids"
+    echo "Cleared ${cleared} stale inline comment(s) from superseded commits."
+  fi
+
+  # Then collect the keys still present (current-head comments) so a
+  # same-commit re-run doesn't re-post an identical item.
   local existing_keys
   existing_keys=$(gh api --paginate \
     "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
