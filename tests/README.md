@@ -19,13 +19,20 @@ These cover scripts that are deterministic text/file transforms — no
 
 - `compose-review-scope.sh` — layer files → composed scope
 - `parse-claude-mention.sh` — comment body → proceed / model decision
-- `split-gemini-response.sh` — review response → PR comment + run-notes file (whole-line sentinel split)
+- `split-gemini-response.sh` — review response → head + tail file at a
+  whole-line sentinel; default run-notes marker, `MARKER`-overridable to
+  also peel the inline-comments block (the workflow chains two calls)
+- `post-inline-comments.sh` — its pure helpers only (`badge_for`,
+  `item_key`, `format_body`): severity badge, dedup key, comment-body
+  shape. Sourced past its `BASH_SOURCE`-guarded `main`, so no network.
 
 The **gh-orchestration** scripts (`post-review-comment.sh`,
-`find-prior-review-comment.sh`, `log-review-to-ai-review-log.sh`) are
-intentionally **not** unit-tested here — they're thin wrappers over
-`gh api` and are exercised end-to-end by the live review dogfood on every
-PR. If a pure, branch-y helper is extracted from one of them, add a test.
+`find-prior-review-comment.sh`, `log-review-to-ai-review-log.sh`, and the
+`main` of `post-inline-comments.sh`) are intentionally **not** unit-tested
+here — they're thin wrappers over `gh api` and are exercised end-to-end by
+the live review dogfood on every PR. If a pure, branch-y helper is
+extracted from one of them, add a test (as `post-inline-comments.sh`
+does for its formatting helpers).
 
 ## Adding a test
 

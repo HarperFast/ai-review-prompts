@@ -379,10 +379,27 @@ jobs:
             distinguishes this comment from anything else on the PR and
             threads runs together across pushes. If your output doesn't
             start with the marker, the post step refuses to publish it
-            (defense against mystery output). Everything from the
-            optional `<!-- gemini-run-notes:v1 -->` marker onward is
-            stripped from the PR comment before posting — the PR sees
-            only your review; the notes go to the log.
+            (defense against mystery output).
+
+            Your response carries up to three channels, split by
+            sentinel lines in this order:
+
+            1. **Top-level comment** — your review text, from the
+               `<!-- gemini-review:v1 -->` line down to the next
+               sentinel. Posted as one comment on the PR.
+            2. **Inline-comments block** (optional) — a
+               `<!-- gemini-inline:v1 -->` line followed by a JSON
+               array (see "## Inline comments" below). Split off the
+               top-level comment and posted as per-line, resolvable
+               review comments. Never shown as raw JSON on the PR.
+            3. **Run-notes block** (optional) — a
+               `<!-- gemini-run-notes:v1 -->` line followed by the
+               notes (see "## After reviewing"). Split off and sent to
+               the ai-review-log issue, never shown on the PR.
+
+            Emit the blocks in that order; each is split at its own
+            sentinel, so an omitted block just means that channel is
+            empty.
 
             ## Layered review scope
 
@@ -487,11 +504,50 @@ jobs:
             ...
             ```
 
-            No inline comments — this workflow's posting surface is
-            one top-level comment per PR. All per-line findings go
-            into that comment with `**File:** path:line` references.
+            Keep the findings in the top-level comment (above) as the
+            durable record — `### <N>.` with `**File:** path:line`,
+            unchanged. That comment is what feeds the ai-review-log and
+            survives even if a line can't be anchored. THEN, so each is
+            also a resolvable, line-anchored thread the author can act
+            on or dismiss (parity with the Claude leg's inline findings
+            and with gemini-code-assist), mirror every finding AND every
+            non-blocking Suggestion into the inline block described next.
 
             Cap the review at 10 findings.
+
+            ## Inline comments
+
+            After the top-level comment (and its optional
+            `### Suggestions (non-blocking)` section) and BEFORE the
+            `<!-- gemini-run-notes:v1 -->` marker, emit a
+            `<!-- gemini-inline:v1 -->` line followed by a JSON array —
+            one object per finding/suggestion you raised above:
+
+            ```
+            <!-- gemini-inline:v1 -->
+            [
+              {"path": "src/x.ts", "line": 42, "kind": "finding",
+               "title": "<same title as the ### header>",
+               "body": "What + why + the concrete fix, 1-3 sentences."},
+              {"path": "src/y.ts", "line": 99, "kind": "suggestion",
+               "title": "<short headline>",
+               "body": "The improvement and its benefit."}
+            ]
+            ```
+
+            - `path` is repo-relative; `line` is the line in the NEW
+              file and MUST be within this PR's diff (a line you can see
+              added/changed) or GitHub can't anchor the comment — it is
+              then dropped from the inline surface but still present in
+              the top-level comment, so nothing is lost.
+            - `kind` is `finding` (blocker) or `suggestion`
+              (non-blocking). The workflow badges them
+              `🔴 Blocker` / `💡 Suggestion (non-blocking)`.
+            - Emit raw JSON, no surrounding prose or code-fence
+              commentary. One entry per item; include only items you
+              also surfaced above.
+            - If you raised nothing anchorable to a diff line, omit the
+              block entirely.
 
             ## After reviewing: capture learnings for the log surface
 
@@ -500,14 +556,16 @@ jobs:
             author; keep it concise. ONLY the run notes below go to the
             log. Structured run notes and learnings from this run go to
             the per-PR ai-review-log issue, NOT the PR comment. The channel
-            is a SECOND sentinel in this same response: after your
-            review text, emit a line containing exactly
+            is the last sentinel in this same response: after your
+            review text (and any `<!-- gemini-inline:v1 -->` block), emit
+            a line containing exactly
             `<!-- gemini-run-notes:v1 -->`, then the run-notes markdown
             below. The workflow splits your response at that marker —
-            everything before it is posted to the PR; everything after
-            it is appended to the ai-review-log issue and never shown on
-            the PR. **Do not duplicate notes content in the review
-            text.** Omit the marker entirely if you have nothing to add.
+            everything before it (the comment and the inline block) is
+            handled as above; everything after it is appended to the
+            ai-review-log issue and never shown on the PR. **Do not
+            duplicate notes content in the review text.** Omit the marker
+            entirely if you have nothing to add.
 
             Keep the notes block under ~30 lines. Use these section
             names (same as the Claude reviewer, for cross-provider
@@ -548,17 +606,28 @@ jobs:
           if jq -e . "$OUT" >/dev/null 2>&1; then
             RESPONSE="$(jq -r '.response // ""' "$OUT")"
           fi
-          # Split the run notes off the PR comment (#29): the comment is
-          # everything BEFORE the `<!-- gemini-run-notes:v1 -->` line; the
-          # part after is written to gemini-review-notes.md for the log
-          # step (which skips an absent file). No marker -> the whole
-          # response is the comment. The sentinel matches only as a whole
-          # line, so an inline mention of it in the review text doesn't
-          # truncate the comment (Codex P2). Logic + edge cases live in
-          # split-gemini-response.sh (tests/split-gemini-response.test.sh).
+          # Split the response into up to three channels (#29 run-notes
+          # split, plus the inline-comments block). Agent output order is
+          # top-level comment, then the `<!-- gemini-inline:v1 -->` JSON
+          # block, then the `<!-- gemini-run-notes:v1 -->` notes. We peel
+          # from the tail inward so each split sees its own marker as the
+          # LAST sentinel in its input:
+          #   1. run-notes  -> notes file, leaving comment+inline
+          #   2. inline JSON -> inline file, leaving the top-level comment
+          # Both reuse the one-pass, whole-line-matching
+          # split-gemini-response.sh (tests/split-gemini-response.test.sh);
+          # a missing marker degrades to "that channel is empty" (the file
+          # simply isn't written, and the consuming step no-ops). The
+          # whole-line match means an inline mention of a marker in the
+          # review text can't truncate the comment (Codex P2). The notes
+          # file feeds the log step; the inline file feeds the
+          # "Post inline review comments" step.
+          NOTES_FILE="${RUNNER_TEMP:-/tmp}/gemini-review-notes.md"
+          INLINE_FILE="${RUNNER_TEMP:-/tmp}/gemini-inline.json"
           COMMENT=""
           if [ -n "$RESPONSE" ]; then
-            COMMENT="$(printf '%s\n' "$RESPONSE" | bash .ai-review-prompts/.github/scripts/split-gemini-response.sh "${RUNNER_TEMP:-/tmp}/gemini-review-notes.md")"
+            PRE_NOTES="$(printf '%s\n' "$RESPONSE" | bash .ai-review-prompts/.github/scripts/split-gemini-response.sh "$NOTES_FILE")"
+            COMMENT="$(printf '%s\n' "$PRE_NOTES" | MARKER='<!-- gemini-inline:v1 -->' bash .ai-review-prompts/.github/scripts/split-gemini-response.sh "$INLINE_FILE")"
           fi
           # `summary` is the contract the post/log steps read — the PR
           # comment part only (notes split off above). Only emit a
@@ -607,6 +676,25 @@ jobs:
           MARKER: '<!-- gemini-review:v1 -->'
           BODY: ${{ steps.gemini-review.outputs.summary }}
         run: bash .ai-review-prompts/.github/scripts/post-review-comment.sh
+
+      - name: Post inline review comments
+        # Additive to the top-level comment above: fan each finding /
+        # suggestion the agent emitted in its `<!-- gemini-inline:v1 -->`
+        # block out to a per-line, resolvable, severity-badged review
+        # comment — parity with the Claude leg's inline findings and the
+        # sunsetting third-party gemini-code-assist. Best-effort: the
+        # script never fails the job, dedups against its own prior
+        # comments, and any item it can't anchor to a diff line stays
+        # present in the top-level comment (nothing lost). No-ops when
+        # the agent emitted no inline block.
+        if: steps.gemini-review.outputs.summary != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          INLINE_FILE: ${{ runner.temp }}/gemini-inline.json
+        run: bash .ai-review-prompts/.github/scripts/post-inline-comments.sh
 
       - name: Log review to ai-review-log
         # Best-effort — never fail the job if logging fails. Feeds
