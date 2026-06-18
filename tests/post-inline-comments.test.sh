@@ -43,4 +43,16 @@ S="$(format_body suggestion 'Reuse helper' 'Call existing parse() instead.' 0011
 assert_contains "$S" "💡 **Suggestion (non-blocking)** — **Reuse helper**" "format_body: suggestion badge + title"
 assert_contains "$S" "gikey=0011223344556677" "format_body: suggestion carries its dedup key"
 
+# --- dedup filter must match real format_body output (regression) ---
+# Bug the dogfood caught on this PR: main filtered existing comments with
+# the FULL marker, but format_body emits `…:v1 gikey=KEY -->`, so the full
+# marker is never a substring of a posted body → dedup silently never
+# fired. The filter must use the marker PREFIX (marker minus ` -->`).
+FULL_MARKER='<!-- gemini-inline-item:v1 -->'
+PREFIX="${FULL_MARKER% -->}"
+POSTED="$(format_body finding 'X' 'Y' abcdef0123456789)"
+assert_contains "$POSTED" "$PREFIX" "dedup: marker PREFIX is a substring of a posted body (filter matches)"
+assert_not_contains "$POSTED" "$FULL_MARKER" "dedup: full marker is NOT a substring (why the prefix is required)"
+assert_eq "$(printf '%s' "$POSTED" | grep -oE 'gikey=[0-9a-f]+')" "gikey=abcdef0123456789" "dedup: gikey recoverable from a posted body"
+
 t_summary

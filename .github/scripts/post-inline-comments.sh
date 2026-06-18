@@ -97,10 +97,17 @@ main() {
     return 0
   fi
 
-  # Strip an optional ```json … ``` code fence the model may wrap the
-  # array in, then validate it parses as a JSON array.
+  # Parse the block as a JSON array. The agent is told to emit raw JSON,
+  # so try the content untouched first — that way a ``` fence inside a
+  # finding body can never be corrupted by fence stripping. Only if the
+  # raw content doesn't parse do we fall back to stripping ```-fence
+  # lines (the model occasionally wraps the array in ```json … ```) and
+  # retry.
   local json
-  json=$(sed -e '/^[[:space:]]*```/d' "$file")
+  json=$(cat "$file")
+  if ! printf '%s' "$json" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    json=$(sed -e '/^[[:space:]]*```/d' "$file")
+  fi
   if ! printf '%s' "$json" | jq -e 'type == "array"' >/dev/null 2>&1; then
     echo "::warning::Inline block is not a JSON array; skipping inline comments (top-level comment still carries the findings)."
     return 0
@@ -113,10 +120,16 @@ main() {
   fi
 
   # Collect keys already posted by us (dedup across re-runs/pushes).
+  # Match on the marker PREFIX (the marker minus its ` -->` close), not
+  # the full marker: format_body emits `<!-- gemini-inline-item:v1
+  # gikey=<key> -->`, so the closed full marker is never a substring of
+  # a posted body — filtering on it would match nothing and dedup would
+  # silently never fire (caught by the dogfood on this PR).
+  local marker_prefix="${INLINE_ITEM_MARKER% -->}"
   local existing_keys
   existing_keys=$(gh api --paginate \
     "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
-    | jq -r --arg m "$INLINE_ITEM_MARKER" \
+    | jq -r --arg m "$marker_prefix" \
       '.[] | select((.body // "") | contains($m)) | .body' \
     | grep -oE 'gikey=[0-9a-f]+' | sort -u || true)
 
