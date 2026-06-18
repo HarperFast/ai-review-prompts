@@ -119,11 +119,22 @@ main() {
   # comments, never fails the run. Guarded on a non-empty HEAD_SHA so a
   # missing value can't select (and delete) everything.
   if [ -n "${HEAD_SHA:-}" ]; then
+    # Skip any comment a human has replied to (its id appears as another
+    # comment's in_reply_to_id) so the sweep never orphans a human
+    # conversation thread — the resolvable/discussable thread is the
+    # point of posting inline. Slurp the paginated pages into one array
+    # first so the reply set is computed across all of them.
     local stale_ids cleared=0 sid
     stale_ids=$(gh api --paginate \
       "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
-      | jq -r --arg p "$marker_prefix" --arg h "$HEAD_SHA" \
-        '.[] | select((.body // "") | contains($p)) | select(.original_commit_id != $h) | .id' \
+      | jq -s -r --arg p "$marker_prefix" --arg h "$HEAD_SHA" '
+          (add // []) as $all
+          | ([$all[] | .in_reply_to_id // empty]) as $replied
+          | $all[]
+          | select((.body // "") | contains($p))
+          | select(.original_commit_id != $h)
+          | select(.id as $cid | ($replied | index($cid)) | not)
+          | .id' \
       || true)
     if [ -n "$stale_ids" ]; then
       while read -r sid; do
@@ -150,7 +161,7 @@ main() {
   local json
   json=$(cat "$file")
   if ! printf '%s' "$json" | jq -e 'type == "array"' >/dev/null 2>&1; then
-    json=$(sed -e '/^[[:space:]]*```/d' "$file")
+    json=$(sed -E -e '/^[[:space:]]*```[a-zA-Z0-9]*[[:space:]]*$/d' "$file")
   fi
   if ! printf '%s' "$json" | jq -e 'type == "array"' >/dev/null 2>&1; then
     echo "::warning::Inline block is not a JSON array; skipping inline comments (top-level comment still carries the findings)."
