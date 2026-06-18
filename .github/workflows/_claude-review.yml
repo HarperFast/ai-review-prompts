@@ -466,7 +466,7 @@ jobs:
               Use `--body-file` (or `gh api … -F body=@<file>`) for
               large bodies that hit shell argument limits.
 
-            **For "no blockers" runs, the PR comment is one sentence.**
+            **For "no blockers" runs, the top-level PR comment is one sentence.**
             This overrides the universal scope's
             `summary is welcome during calibration` allowance — this
             workflow has a log surface (the next workflow step threads
@@ -494,6 +494,15 @@ jobs:
             still has value for calibration; it just lives in the
             ai-review-log issue, where reviewers can spot-check the
             bot's reasoning without paying that cost on every PR.
+
+            **Non-blocking Suggestions** (per "What's a non-blocking
+            Suggestion" in the layered scope above): a no-blockers run
+            MAY still carry up to 3 curated suggestions. Post each as an
+            **inline review comment** anchored to its line, prefixed
+            `Suggestion (non-blocking):` — a resolvable thread the author
+            takes or dismisses. Keep the top-level comment the single
+            "no blockers" sentence; suggestions never join the blocker
+            list and never trigger `REQUEST_CHANGES`.
 
             Only post GitHub comments — do NOT submit review text as SDK
             messages.
