@@ -71,13 +71,14 @@ badge_for() {
 # Stable short key over (path, line, title) for dedup. Portable across
 # the sha256 tool name on Linux runners (sha256sum) and macOS (shasum).
 item_key() {
-  local raw="$1|$2|$3" h
+  local raw="$1|$2|$3" h key
   if command -v sha256sum >/dev/null 2>&1; then
     h=$(printf '%s' "$raw" | sha256sum)
   else
     h=$(printf '%s' "$raw" | shasum -a 256)
   fi
-  printf '%s' "${h%% *}" | cut -c1-16
+  key="${h%% *}"
+  printf '%s' "${key:0:16}"
 }
 
 # Compose the inline comment body: severity badge, title, detail, and
