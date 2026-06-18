@@ -58,4 +58,33 @@ split ""
 assert_eq "$COMMENT" "" "empty input → empty comment"
 assert_eq "$(cat "$NOTES")" "" "empty input → no notes"
 
+# 7. MARKER override → split at a different whole-line sentinel (the
+#    inline-comments block), reusing the same one-pass logic.
+INLINE_MARK='<!-- gemini-inline:v1 -->'
+split_m() { # <input> <marker>
+  OUTF="$(mktemp)"; TMPS+=("$OUTF"); : > "$OUTF"
+  HEAD="$(printf '%s' "$1" | MARKER="$2" bash "$SCRIPT" "$OUTF")"
+}
+R=$'<!-- gemini-review:v1 -->\n1 blocker found.\n\n<!-- gemini-inline:v1 -->\n[{"path":"a.ts","line":1}]'
+split_m "$R" "$INLINE_MARK"
+assert_contains "$HEAD" "1 blocker found." "MARKER override: text before the inline marker is kept"
+assert_not_contains "$HEAD" "gemini-inline:v1" "MARKER override: inline sentinel stripped from head"
+assert_not_contains "$HEAD" "a.ts" "MARKER override: JSON excluded from head"
+assert_contains "$(cat "$OUTF")" '[{"path":"a.ts"' "MARKER override: JSON written to the out-file"
+
+# 8. full 3-way peel (run-notes first, then inline) — the workflow's
+#    exact sequence: top-level comment | inline JSON | run notes.
+R=$'<!-- gemini-review:v1 -->\nReviewed; 1 blocker found.\n\n<!-- gemini-inline:v1 -->\n[{"path":"x.ts","line":9,"kind":"finding"}]\n<!-- gemini-run-notes:v1 -->\n## Run notes\n- traced auth'
+NOTES="$(mktemp)"; TMPS+=("$NOTES"); : > "$NOTES"
+INLINE="$(mktemp)"; TMPS+=("$INLINE"); : > "$INLINE"
+PRE="$(printf '%s' "$R" | bash "$SCRIPT" "$NOTES")"
+CMT="$(printf '%s' "$PRE" | MARKER="$INLINE_MARK" bash "$SCRIPT" "$INLINE")"
+assert_contains "$CMT" "1 blocker found." "3-way: top-level comment retained"
+assert_not_contains "$CMT" "x.ts" "3-way: inline JSON peeled off the comment"
+assert_not_contains "$CMT" "Run notes" "3-way: run notes peeled off the comment"
+assert_contains "$(cat "$INLINE")" '"x.ts"' "3-way: inline file has the JSON"
+assert_not_contains "$(cat "$INLINE")" "Run notes" "3-way: inline file excludes run notes"
+assert_contains "$(cat "$NOTES")" "## Run notes" "3-way: notes file has the run notes"
+assert_not_contains "$(cat "$NOTES")" "x.ts" "3-way: notes file excludes the inline JSON"
+
 t_summary
