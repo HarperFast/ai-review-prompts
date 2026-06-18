@@ -115,13 +115,15 @@ Pre-existing gaps are NOT findings. "This function has no tests" on code the PR 
 
 **What's a non-blocking Suggestion** (optional — post separately, never as a blocker):
 
-A concrete, actionable improvement *on a line in this diff* that a maintainer would plausibly take, with a named benefit, but that does not gate the merge. Admit only:
+A concrete, actionable improvement *on a line in this diff* that a maintainer would plausibly take, with a named benefit, but that does not gate the merge. **It must propose a specific change** — if the code would stay exactly as written after the author reads it, it was never a suggestion. Admit only:
 
 - **Performance on a hot path** — an avoidable O(n²), a redundant per-record allocation, a sync call in an async commit/replication/request path — with the cost named.
 - **Reuse over reimplementation** — the diff hand-rolls something an existing dep or `utility/` / `shared/` helper already provides (semver math, path joining, retry/backoff, identity/auth helpers).
 - **A maintainability issue with a concrete consequence** — a foot-gun the next caller will hit, a duplicated invariant that will drift. Not taste.
 
 This is the *only* widening of what reaches the PR. Everything under "What is NOT a blocker" still gets **nothing** — style/naming/formatting, "consider a comment", speculative or out-of-diff notes, pre-existing gaps, cosmetic stale comments, by-design/accepted lines, CI-skip noise, architectural rewrites the code doesn't call for. A Suggestion is not a softened nit; if you're reaching to justify it, drop it.
+
+**Never affirm.** A Suggestion proposes a change — it is *not* a place to validate, praise, or confirm that existing code is correct ("accurately implements…", "correctly handles…", "a robust approach", "maintains the invariant", "ensures … as required"). Confirming what you checked is *tracing*: it belongs in the log surface's `Surfaces verified`, never on the PR. An inline thread that asks the author to do nothing is pure noise — it costs a notification and a resolve click for zero action. Litmus test: if the suggestion has no imperative verb (replace / extract / reuse / guard / hoist / cache / …) naming a change to make, it is an affirmation — drop it.
 
 **Cap: at most 3, highest-value, curated.** An exhaustive list of minor suggestions *is* the noise this tier exists to avoid. If nothing clears the bar, there are no suggestions — the one-sentence pass stands.
 
