@@ -51,4 +51,14 @@ assert_eq "$(count $'Reviewed; no blockers found.\n\n### Suggestions (non-blocki
 # 10. Empty / whitespace input → 0.
 assert_eq "$(count '')" "0" "empty input -> 0"
 
+# 11. Clean re-review with an interposed adjective stays 0 — must NOT be
+#     inflated to a phantom finding by the floor (cross-model review #69).
+assert_eq "$(count 'No critical blockers found.')" "0" "'No critical blockers found.' -> 0"
+assert_eq "$(count 'No new blockers found.')" "0" "'No new blockers found.' -> 0"
+
+# 12. A token that merely ends in "no" must NOT read as a clean pass — the
+#     "no" is word-anchored, so this asserts a finding and floors to 1
+#     rather than collapsing to 0 (cross-model review #69).
+assert_eq "$(count 'Casino blockers found.')" "1" "word ending in 'no' -> floors to 1, not 0"
+
 t_summary

@@ -32,10 +32,14 @@ count_line=$(printf '%s\n' "$BODY" \
 # Structural fallback / floor input: count of `### N.` finding headers.
 header_count=$(printf '%s\n' "$BODY" | grep -c -E '^### [0-9]' || true)
 
-# 1. Explicit clean pass. Substring match tolerates markdown wrapping and
-#    leading text ("Reviewed; no blockers found."). Checked first so a
-#    no-blockers line can never be floored to >= 1 by step 4.
-if printf '%s' "$count_line" | grep -qiE 'no blockers? found'; then
+# 1. Explicit clean pass. Checked first so a no-blockers line can never be
+#    floored to >= 1 by step 4. The "no" is word-anchored ((^|[^a-zA-Z]))
+#    so a token that merely ends in "no" ("Casino blockers found.") does
+#    NOT read as clean — it falls through to the floor, since the safe
+#    direction on any "...blocker(s) found." is >= 1, never 0. One optional
+#    adjective is tolerated ("No critical/significant/new blockers found.")
+#    so a real clean re-review isn't inflated to a phantom finding by step 4.
+if printf '%s' "$count_line" | grep -qiE '(^|[^a-zA-Z])no( [a-zA-Z]+)? blockers? found'; then
   echo 0
   exit 0
 fi
