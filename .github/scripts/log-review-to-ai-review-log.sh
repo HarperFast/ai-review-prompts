@@ -149,41 +149,13 @@ if [ -n "$JOB_STARTED" ] && [ -n "$REVIEW_AT" ] && [ "$REVIEW_AT" \< "$JOB_START
   exit 0
 fi
 
-# Title: extract the count from the standardized first-content line
-# both reviewers' prompts emit:
-#   "N blockers found."      / "1 blocker found."   -> N
-#   "Reviewed; no blockers found."                  -> 0
-# This holds even when a reviewer puts the substantive findings in
-# inline review comments and uses the top-level body as a terse
-# recap (Claude's evolved pattern on oauth#89) — the count line is
-# present regardless of where the substance lives.
-#
-# Fall back to counting `^### [0-9]\.` headers when the count line
-# isn't present (older formats / future deviations). Earlier
-# iterations (#88, #89, #104) relied SOLELY on prose-grep and fell
-# through to "0 finding(s) — triage pending" when phrasing varied —
-# the fallback to header counting is what prevents that regression
-# now.
-COUNT_LINE=$(printf '%s\n' "$REVIEW_BODY" \
-  | grep -v -E '^([[:space:]]*$|<!--)' \
-  | head -1)
-
-# Tolerate optional markdown wrapping on the count line. LLMs
-# occasionally bold or italicize first-sentence summaries
-# ("**2 blockers found.**", "_1 blocker found._"); without the
-# allowance, those would skip the count-line branch and fall
-# through to header counting (which returns 0 on Claude's recap
-# format). `[[:space:]*_]*` matches any combination of leading
-# whitespace, asterisks, and underscores. The no-blockers branch
-# is already substring-matched, so it tolerates wrapping
-# implicitly.
-if echo "$COUNT_LINE" | grep -qiE 'no blockers? found'; then
-  FINDING_COUNT=0
-elif echo "$COUNT_LINE" | grep -qE '^[[:space:]*_]*[0-9]+ blockers? found'; then
-  FINDING_COUNT=$(echo "$COUNT_LINE" | grep -oE '[0-9]+' | head -1)
-else
-  FINDING_COUNT=$(printf '%s\n' "$REVIEW_BODY" | grep -c '^### [0-9]' || true)
-fi
+# Title: derive the finding count from the review body. The logic — the
+# standardized one-sentence summary line as the primary signal, `### N.`
+# headers as the fallback, plus the #68 hardening (spelled-out cardinals,
+# and a floor so an asserted "...blocker(s) found." summary never logs as
+# "no blockers") — lives in derive-finding-count.sh as a pure, unit-tested
+# unit (tests/derive-finding-count.test.sh).
+FINDING_COUNT=$(printf '%s' "$REVIEW_BODY" | bash "$(dirname "$0")/derive-finding-count.sh")
 
 if [ "$FINDING_COUNT" = "0" ]; then
   COUNT_PART="no blockers"
