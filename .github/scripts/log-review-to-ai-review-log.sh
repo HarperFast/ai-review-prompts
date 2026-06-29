@@ -46,6 +46,12 @@
 #   NOTES_FILE_BASENAME   — optional. Run-notes filename under
 #                           $RUNNER_TEMP. Defaults to
 #                           "claude-review-notes.md".
+#   AI_REVIEW_PROMPTS_REF — optional. The ai-review-prompts ref this
+#                           run reviewed under (the caller's pinned SHA).
+#                           Recorded as the body's **Prompt ref:** field
+#                           and a best-effort `prompt:<shortsha>` label so
+#                           calibration can attribute verdicts to a
+#                           specific prompt version. Absent → "unknown".
 #   LOOKUP_API_PATH       — optional. The GitHub API path to query
 #                           for the provider's review surface.
 #                           Default:
@@ -184,6 +190,16 @@ fi
 # providers; included unconditionally.
 RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+# ai-review-prompts ref this run reviewed under (passed by the reusable
+# workflow's log step as AI_REVIEW_PROMPTS_REF). Recorded in the body so
+# calibration can attribute a verdict to a specific prompt version rather
+# than a date bucket, and applied as a best-effort `prompt:<shortsha>`
+# label below for sweepable per-version queries.
+PROMPT_REF="${AI_REVIEW_PROMPTS_REF:-}"
+PROMPT_REF_FIELD="${PROMPT_REF:-unknown}"
+PROMPT_LABEL=""
+[ -n "$PROMPT_REF" ] && PROMPT_LABEL="prompt:${PROMPT_REF:0:12}"
+
 # Peers link — only included when PROVIDER_LABEL is set, since
 # legacy Claude-only flows don't have peer issues to point at.
 # This URL is a GitHub issue-search prefiltered to the same
@@ -192,11 +208,11 @@ RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 if [ -n "$PROVIDER_LABEL" ]; then
   PEERS_QUERY=$(printf '%s' "[$REPO_SHORT] PR #$PR_NUMBER" | jq -sRr @uri)
   PEERS_URL="https://github.com/HarperFast/ai-review-log/issues?q=is%3Aissue+${PEERS_QUERY}"
-  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Provider:** %s\n**Model:** %s\n**Run:** %s\n**Peers:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Date:** %s\n\n---\n\n%s\n' \
-    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$PROVIDER_LABEL" "$MODEL" "$RUN_URL" "$PEERS_URL" "$REVIEW_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
+  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Provider:** %s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Peers:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Date:** %s\n\n---\n\n%s\n' \
+    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$PROVIDER_LABEL" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$PEERS_URL" "$REVIEW_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
 else
-  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Model:** %s\n**Run:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Date:** %s\n\n---\n\n%s\n' \
-    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$MODEL" "$RUN_URL" "$REVIEW_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
+  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Date:** %s\n\n---\n\n%s\n' \
+    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$REVIEW_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
 fi
 
 # Structured run notes from the agent (optional). This is the
@@ -229,6 +245,7 @@ EXISTING_NUMBER=$(curl -sS \
     '[.[] | select(.title | startswith($prefix))] | first | .number // empty')
 
 if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then
+  ISSUE_NUMBER="$EXISTING_NUMBER"
   # Existing issue: append a comment, refresh the title to reflect
   # this run's status. Title refresh is best-effort — we still
   # report success on the comment alone.
@@ -289,9 +306,37 @@ else
 
   if [ "$HTTP" -ge 200 ] && [ "$HTTP" -lt 300 ]; then
     ISSUE_URL=$(jq -r '.html_url' /tmp/ai-log-resp.json)
+    ISSUE_NUMBER=$(jq -r '.number // empty' /tmp/ai-log-resp.json)
     echo "Logged review to new issue: $ISSUE_URL"
   else
     echo "::warning::ai-review-log POST failed (HTTP $HTTP):"
     cat /tmp/ai-log-resp.json
+  fi
+fi
+
+# Best-effort: tag the issue with the `prompt:<shortsha>` label so the
+# calibration sweep can filter verdicts by prompt version. This NEVER
+# gates the log entry — the ref is already recorded in the body above —
+# so any failure here is a notice, not a warning. Create the label if it
+# is missing (idempotent; an existing label returns 422, ignored), then
+# add it to the issue. Re-reviews under a newer ref accumulate a second
+# prompt:* label, which correctly marks an issue that spans versions.
+if [ -n "$PROMPT_LABEL" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "$ISSUE_NUMBER" != "null" ]; then
+  curl -sS -o /dev/null -X POST \
+    -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    https://api.github.com/repos/HarperFast/ai-review-log/labels \
+    -d "$(jq -nc --arg n "$PROMPT_LABEL" '{name: $n, color: "c5def5", description: "ai-review-prompts ref the review ran under"}')" >/dev/null 2>&1 || true
+  HTTP_L=$(curl -sS -o /tmp/ai-log-label-resp.json -w '%{http_code}' -X POST \
+    -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/repos/HarperFast/ai-review-log/issues/$ISSUE_NUMBER/labels" \
+    -d "$(jq -nc --arg n "$PROMPT_LABEL" '{labels: [$n]}')")
+  if [ "$HTTP_L" -ge 200 ] && [ "$HTTP_L" -lt 300 ]; then
+    echo "Tagged issue #$ISSUE_NUMBER with $PROMPT_LABEL"
+  else
+    echo "::notice::prompt-label add returned HTTP $HTTP_L (non-fatal; ref is in the body)"
   fi
 fi

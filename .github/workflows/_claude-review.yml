@@ -585,4 +585,8 @@ jobs:
           REPO_SHORT: ${{ github.event.repository.name }}
           MARKER: '<!-- claude-review:v1 -->'
           MODEL: ${{ inputs.model }}
+          # The ai-review-prompts ref this run reviewed under — recorded
+          # in the log entry so calibration can attribute verdicts to a
+          # specific prompt version (not just a date bucket).
+          AI_REVIEW_PROMPTS_REF: ${{ inputs.ai-review-prompts-ref }}
         run: bash .ai-review-prompts/.github/scripts/log-review-to-ai-review-log.sh

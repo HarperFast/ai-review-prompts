@@ -722,4 +722,8 @@ jobs:
           MODEL: ${{ inputs.model }}
           PROVIDER_LABEL: gemini
           NOTES_FILE_BASENAME: gemini-review-notes.md
+          # The ai-review-prompts ref this run reviewed under — recorded
+          # in the log entry so calibration can attribute verdicts to a
+          # specific prompt version (not just a date bucket).
+          AI_REVIEW_PROMPTS_REF: ${{ inputs.ai-review-prompts-ref }}
         run: bash .ai-review-prompts/.github/scripts/log-review-to-ai-review-log.sh
