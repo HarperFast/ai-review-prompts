@@ -199,6 +199,10 @@ PROMPT_REF="${AI_REVIEW_PROMPTS_REF:-}"
 PROMPT_REF_FIELD="${PROMPT_REF:-unknown}"
 PROMPT_LABEL=""
 [ -n "$PROMPT_REF" ] && PROMPT_LABEL="prompt:${PROMPT_REF:0:12}"
+# Set in whichever branch below logs the entry (existing/new); declared
+# here so the best-effort label step can reference it unconditionally
+# under `set -u`.
+ISSUE_NUMBER=""
 
 # Peers link — only included when PROVIDER_LABEL is set, since
 # legacy Claude-only flows don't have peer issues to point at.
@@ -321,7 +325,7 @@ fi
 # is missing (idempotent; an existing label returns 422, ignored), then
 # add it to the issue. Re-reviews under a newer ref accumulate a second
 # prompt:* label, which correctly marks an issue that spans versions.
-if [ -n "$PROMPT_LABEL" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "$ISSUE_NUMBER" != "null" ]; then
+if [ -n "$PROMPT_LABEL" ] && [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
   curl -sS -o /dev/null -X POST \
     -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
     -H "Accept: application/vnd.github+json" \
