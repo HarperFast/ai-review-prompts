@@ -19,6 +19,8 @@ harper/
                        # static vs instance dispatch, Fabric deployment)
 repo-type/
   plugin.md            # npm-published Harper plugins
+  native-addon.md      # Node.js native addons (TS over an N-API C++ binding,
+                       # e.g. @harperfast/rocksdb-js)
 examples/
   claude-review.yml    # reference GitHub Actions workflow
   claude-mention.yml
