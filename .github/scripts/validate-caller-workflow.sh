@@ -7,8 +7,8 @@
 # (gemini coverage was a gap flagged in rocksdb-js#701 review
 # feedback). The companion validator
 # in `validate-auth-gate-invariants.sh` validates the *reusables*
-# (`_claude-*.yml`) inside this repo; this one validates the
-# *callers* in consumer repos.
+# (`_*-{review,mention,issue-to-pr}.yml`) inside this repo; this
+# one validates the *callers* in consumer repos.
 #
 # STRUCTURAL lint, not a semantic test. Catches:
 #
