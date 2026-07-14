@@ -32,8 +32,8 @@
 # below catches the actual supply-chain risk.
 #
 # Inputs (none — runs in the consumer repo's checkout). Validates:
-#   .github/workflows/claude-*.yml
-#   .github/workflows/gemini-*.yml
+#   .github/workflows/claude-*.{yml,yaml}
+#   .github/workflows/gemini-*.{yml,yaml}
 #
 # Exit code:
 #   0  all callers pass (or no caller files present)
@@ -48,9 +48,9 @@ fail() {
 command -v yq >/dev/null || fail "yq not available on runner"
 
 shopt -s nullglob
-files=(.github/workflows/claude-*.yml .github/workflows/gemini-*.yml)
+files=(.github/workflows/claude-*.{yml,yaml} .github/workflows/gemini-*.{yml,yaml})
 if [ "${#files[@]}" -eq 0 ]; then
-  echo "No claude-*.yml / gemini-*.yml caller workflows found; nothing to validate."
+  echo "No claude or gemini caller workflows found; nothing to validate."
   exit 0
 fi
 
@@ -95,4 +95,4 @@ for f in "${files[@]}"; do
 done
 
 echo ""
-echo "All AI-review caller workflows (claude-*.yml / gemini-*.yml) pass invariants."
+echo "All AI-review caller workflows pass invariants."
