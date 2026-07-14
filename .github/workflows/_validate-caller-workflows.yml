@@ -21,12 +21,16 @@ name: Validate caller workflows (reusable)
 #       pull_request:
 #         paths:
 #           - '.github/workflows/claude-*.yml'
+#           - '.github/workflows/claude-*.yaml'
 #           - '.github/workflows/gemini-*.yml'
+#           - '.github/workflows/gemini-*.yaml'
 #       push:
 #         branches: [main]
 #         paths:
 #           - '.github/workflows/claude-*.yml'
+#           - '.github/workflows/claude-*.yaml'
 #           - '.github/workflows/gemini-*.yml'
+#           - '.github/workflows/gemini-*.yaml'
 #     jobs:
 #       validate:
 #         uses: HarperFast/ai-review-prompts/.github/workflows/_validate-caller-workflows.yml@<sha>
