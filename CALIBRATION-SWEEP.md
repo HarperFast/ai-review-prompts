@@ -83,6 +83,9 @@ repo root (create the file if missing): verdict mix including the
 per-model / per-prompt-ref table, noise + partial/false-negative patterns
 (with links to the source ai-review-log issues), and either the prompt
 edits made or an explicit `No prompt changes this week — <reason>`.
+If a `## Week of <WEEK>` section already exists (a re-run or back-fill
+of the same week), REPLACE that section in place — never leave two
+entries for the same week.
 
 ## 4. ALWAYS end with exactly one open PR for <WEEK> (idempotent)
 
@@ -92,9 +95,14 @@ First check whether an OPEN PR for this week already exists: head branch
 If it exists, REUSE its branch (push further commits) instead of opening a
 second PR — re-runs must not create duplicates.
 
-a. `git checkout -B calibration/week-of-<WEEK>` (branch off the current
-   checkout, which the workflow puts on latest `main`; if the branch
-   exists on origin, start from origin's copy).
+a. Create or resume the branch — never force-reset it:
+   `git fetch origin calibration/week-of-<WEEK>` first; if that ref
+   exists, `git checkout -b calibration/week-of-<WEEK>
+   origin/calibration/week-of-<WEEK>` (resume the existing work), else
+   `git checkout -b calibration/week-of-<WEEK>` off the current
+   checkout (which the workflow puts on latest `main`). Do not use
+   `-B` — it would reset an existing branch to `main` and discard the
+   prior run's commits.
 b. Commit the `CALIBRATION.md` update ALWAYS, plus any prompt-file edits
    from step 2. Commit message: `calibration: week of <WEEK>`.
 c. `git push -u origin calibration/week-of-<WEEK>`.

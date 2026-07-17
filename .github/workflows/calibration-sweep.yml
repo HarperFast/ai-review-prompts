@@ -102,7 +102,8 @@ jobs:
             for n in $(jq -r '.[].number' "$D/$v.json"); do
               gh api "repos/HarperFast/ai-review-log/issues/$n/comments" \
                 --jq '[.[] | {user: .user.login, body}]' \
-                > "$D/comments-$n.json" || echo '[]' > "$D/comments-$n.json"
+                > "$D/comments-$n.json" \
+                || { echo "::warning::comments fetch failed for ai-review-log#$n — rationale gap"; echo '[]' > "$D/comments-$n.json"; }
             done
           done
 
@@ -112,13 +113,19 @@ jobs:
             gh api --paginate \
               "repos/HarperFast/ai-review-log/issues?state=all&labels=$label&per_page=100" \
               | jq -s --arg w "$WEEK" '[.[][] | select(.title | contains($w)) | {number, title, body}]' \
-              > "$D/$out.json" || echo '[]' > "$D/$out.json"
+              > "$D/$out.json" \
+              || { echo "::warning::curated '$label' fetch failed — continuing without it"; echo '[]' > "$D/$out.json"; }
           done
 
           # How much of the week is still untriaged (signal completeness).
           gh api --paginate \
             "repos/HarperFast/ai-review-log/issues?state=open&labels=verdict:pending&per_page=100" \
-            | jq -s 'map(length) | add // 0' > "$D/pending-count.txt" || echo 0 > "$D/pending-count.txt"
+            | jq -s 'map(length) | add // 0' > "$D/pending-count.txt" \
+            || { echo "::warning::pending-count fetch failed — recording 0"; echo 0 > "$D/pending-count.txt"; }
+
+          for f in "$D"/useful.json "$D"/noise.json "$D"/partial.json; do
+            [ "$(jq 'length' "$f")" -gt 0 ] || echo "::warning::$(basename "$f") is empty for week $WEEK"
+          done
 
           echo "Pre-fetched for week $WEEK:"
           for f in "$D"/*.json; do printf '  %s: %s items\n' "$(basename "$f")" "$(jq 'length' "$f")"; done
