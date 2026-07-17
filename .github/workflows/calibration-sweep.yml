@@ -52,6 +52,13 @@ jobs:
   sweep:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Deliberately NO `id-token: write`: with an explicit `github_token`
+    # input, claude-code-action skips the OIDC/App token exchange
+    # entirely, so the OIDC mint permission is dead weight. Proven in
+    # production by ai-review-log's triage-assist.yml — the identical
+    # shape (api-key auth + explicit github_token, no id-token) runs
+    # green on its nightly schedule. Reviewers keep flagging this from
+    # v1.0 priors; see the resolved threads on #75 before re-adding.
     permissions:
       contents: write
       pull-requests: write
@@ -79,6 +86,10 @@ jobs:
             # days back — the week just ending.
             WEEK=$(TZ=America/Los_Angeles date -d "-$(( ($(TZ=America/Los_Angeles date +%u) + 6) % 7 )) days" +%F)
           fi
+          # Exclusive upper bound (next Monday). Without it a back-fill
+          # run would sweep in every verdict closed AFTER the target
+          # week too, double-counting when the following week runs.
+          WEEK_END=$(date -d "${WEEK} + 7 days" +%F)
           echo "WEEK=$WEEK" >> "$GITHUB_ENV"
           D="$RUNNER_TEMP/calib"
           mkdir -p "$D"
@@ -92,8 +103,8 @@ jobs:
           for v in useful noise partial; do
             gh api --paginate \
               "repos/HarperFast/ai-review-log/issues?state=closed&labels=verdict:$v&since=${WEEK}T00:00:00Z&per_page=100" \
-              | jq -s --arg w "${WEEK}T00:00:00Z" \
-                  '[.[][] | select(.closed_at >= $w) | {number, title, closed_at, body, labels: [.labels[].name]}]' \
+              | jq -s --arg w "${WEEK}T00:00:00Z" --arg w_end "${WEEK_END}T00:00:00Z" \
+                  '[.[][] | select(.closed_at >= $w and .closed_at < $w_end) | {number, title, closed_at, body, labels: [.labels[].name]}]' \
               > "$D/$v.json"
           done
 
@@ -152,4 +163,4 @@ jobs:
           claude_args: |
             --model claude-opus-4-8
             --max-turns 200
-            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(date:*),Bash(jq:*),Bash(ls:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git config:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git branch:*),Bash(git fetch:*),Bash(git ls-remote:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
+            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(date:*),Bash(jq:*),Bash(ls:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git config:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git branch:*),Bash(git fetch:*),Bash(git ls-remote:*),Bash(git rev-parse:*),Bash(git show:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
