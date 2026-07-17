@@ -1,0 +1,166 @@
+name: Calibration sweep (weekly)
+
+# Weekly calibration-feedback runner — reads the week's triage verdicts
+# from HarperFast/ai-review-log and opens ONE calibration PR against this
+# repo per week (CALIBRATION.md entry + conservative layer edits). The
+# agent's instructions are rubric-as-code in CALIBRATION-SWEEP.md at the
+# repo root — edit THAT file to change sweep behavior, not the prompt
+# below.
+#
+# Successor to the claude.ai "weekly calibration sweep" routine (disabled
+# 2026-07 — same platform breakage that killed the nightly triage
+# routine; ai-review-log's triage-assist.yml is the sibling migration).
+#
+# Design notes:
+#   * Data is PRE-FETCHED in a deterministic bash step using
+#     AI_REVIEW_LOG_TOKEN (this repo's checkout token can't read the
+#     private log repo). The agent itself holds only `github.token`,
+#     scoped to this repo by the job's permissions block — it can't
+#     touch ai-review-log at all.
+#   * The agent creates the branch + PR with `github.token`, so the
+#     calibration PR does NOT retrigger this repo's own PR workflows
+#     (GitHub suppresses workflow-triggering for github.token events).
+#     The gemini dogfood review therefore doesn't fire on these PRs —
+#     apply the `gemini-review` label manually if a bot pass is wanted
+#     before merge.
+#   * Cron fires Monday 01:00 UTC = Sunday evening PT, matching the old
+#     routine. The WEEK computed is the (PT) week just ending. A manual
+#     dispatch can override `week` to back-fill a missed week.
+#
+# Prerequisites:
+#   - ANTHROPIC_API_KEY   (repo secret)
+#   - AI_REVIEW_LOG_TOKEN (repo secret — issues:read on ai-review-log)
+
+on:
+  schedule:
+    - cron: '23 1 * * 1'
+  workflow_dispatch:
+    inputs:
+      week:
+        description: >-
+          ISO Monday (YYYY-MM-DD) of the week to sweep. Leave empty to
+          compute the current PT week — set explicitly to back-fill a
+          missed week.
+        required: false
+        type: string
+
+concurrency:
+  group: calibration-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Deliberately NO `id-token: write`: with an explicit `github_token`
+    # input, claude-code-action skips the OIDC/App token exchange
+    # entirely, so the OIDC mint permission is dead weight. Proven in
+    # production by ai-review-log's triage-assist.yml — the identical
+    # shape (api-key auth + explicit github_token, no id-token) runs
+    # green on its nightly schedule. Reviewers keep flagging this from
+    # v1.0 priors; see the resolved threads on #75 before re-adding.
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout ai-review-prompts (main)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          # Full history so the agent can branch/rebase against origin
+          # state; checkout persists github.token credentials, which is
+          # what authenticates the agent's `git push`.
+          fetch-depth: 0
+
+      - name: Pre-fetch the week's verdicts from ai-review-log
+        env:
+          GH_TOKEN: ${{ secrets.AI_REVIEW_LOG_TOKEN }}
+          WEEK_OVERRIDE: ${{ inputs.week }}
+        run: |
+          set -euo pipefail
+          if [ -n "${WEEK_OVERRIDE}" ]; then
+            WEEK="${WEEK_OVERRIDE}"
+          else
+            # Monday of the current week in America/Los_Angeles. At the
+            # scheduled fire time (Sun evening PT) this is the Monday six
+            # days back — the week just ending.
+            WEEK=$(TZ=America/Los_Angeles date -d "-$(( ($(TZ=America/Los_Angeles date +%u) + 6) % 7 )) days" +%F)
+          fi
+          # Exclusive upper bound (next Monday). Without it a back-fill
+          # run would sweep in every verdict closed AFTER the target
+          # week too, double-counting when the following week runs.
+          WEEK_END=$(date -d "${WEEK} + 7 days" +%F)
+          echo "WEEK=$WEEK" >> "$GITHUB_ENV"
+          D="$RUNNER_TEMP/calib"
+          mkdir -p "$D"
+          echo "CALIB_DATA=$D" >> "$GITHUB_ENV"
+
+          # Verdicts applied this week. `since` filters on updated_at
+          # (server-side, cheap); the jq filter narrows to closed_at
+          # within the week so re-touched older issues don't leak in.
+          # `--paginate` emits one JSON array PER PAGE, so slurp (-s)
+          # and flatten to keep each output file a single array.
+          for v in useful noise partial; do
+            gh api --paginate \
+              "repos/HarperFast/ai-review-log/issues?state=closed&labels=verdict:$v&since=${WEEK}T00:00:00Z&per_page=100" \
+              | jq -s --arg w "${WEEK}T00:00:00Z" --arg w_end "${WEEK_END}T00:00:00Z" \
+                  '[.[][] | select(.closed_at >= $w and .closed_at < $w_end) | {number, title, closed_at, body, labels: [.labels[].name]}]' \
+              > "$D/$v.json"
+          done
+
+          # Triage rationale for the interesting classes.
+          for v in noise partial; do
+            for n in $(jq -r '.[].number' "$D/$v.json"); do
+              gh api "repos/HarperFast/ai-review-log/issues/$n/comments" \
+                --jq '[.[] | {user: .user.login, body}]' \
+                > "$D/comments-$n.json" \
+                || { echo "::warning::comments fetch failed for ai-review-log#$n — rationale gap"; echo '[]' > "$D/comments-$n.json"; }
+            done
+          done
+
+          # Curated weekly issues (legacy supplements) — best-effort.
+          for pair in "calibration:calibration-log" "false-negatives:false-negative-log"; do
+            label="${pair%%:*}"; out="${pair##*:}"
+            gh api --paginate \
+              "repos/HarperFast/ai-review-log/issues?state=all&labels=$label&per_page=100" \
+              | jq -s --arg w "$WEEK" '[.[][] | select(.title | contains($w)) | {number, title, body}]' \
+              > "$D/$out.json" \
+              || { echo "::warning::curated '$label' fetch failed — continuing without it"; echo '[]' > "$D/$out.json"; }
+          done
+
+          # How much of the week is still untriaged (signal completeness).
+          gh api --paginate \
+            "repos/HarperFast/ai-review-log/issues?state=open&labels=verdict:pending&per_page=100" \
+            | jq -s 'map(length) | add // 0' > "$D/pending-count.txt" \
+            || { echo "::warning::pending-count fetch failed — recording 0"; echo 0 > "$D/pending-count.txt"; }
+
+          for f in "$D"/useful.json "$D"/noise.json "$D"/partial.json; do
+            [ "$(jq 'length' "$f")" -gt 0 ] || echo "::warning::$(basename "$f") is empty for week $WEEK"
+          done
+
+          echo "Pre-fetched for week $WEEK:"
+          for f in "$D"/*.json; do printf '  %s: %s items\n' "$(basename "$f")" "$(jq 'length' "$f")"; done
+
+      - name: Run weekly sweep per CALIBRATION-SWEEP.md
+        uses: anthropics/claude-code-action@ef50f123a3a9be95b60040d042717517407c7256 # v1.0.110
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WEEK: ${{ env.WEEK }}
+          CALIB_DATA: ${{ env.CALIB_DATA }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Explicit token skips the GitHub-App token exchange (the
+          # Claude Code app isn't a prerequisite this way) — same
+          # pattern as ai-review-log's triage-assist.yml.
+          github_token: ${{ github.token }}
+          prompt: |
+            Read CALIBRATION-SWEEP.md at the root of this checkout and
+            execute it exactly. The checkout is HarperFast/ai-review-prompts
+            on main. Pre-fetched data for week $WEEK is in $CALIB_DATA
+            (layout documented in CALIBRATION-SWEEP.md). Configure git
+            author as "calibration-sweep[bot] <noreply@github.com>" before
+            committing.
+          claude_args: |
+            --model claude-opus-4-8
+            --max-turns 200
+            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(date:*),Bash(jq:*),Bash(ls:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git config:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git branch:*),Bash(git fetch:*),Bash(git ls-remote:*),Bash(git rev-parse:*),Bash(git show:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
