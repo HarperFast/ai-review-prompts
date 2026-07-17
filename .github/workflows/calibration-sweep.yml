@@ -152,4 +152,4 @@ jobs:
           claude_args: |
             --model claude-opus-4-8
             --max-turns 200
-            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(date:*),Bash(jq:*),Bash(ls:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git config:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git branch:*),Bash(git fetch:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
+            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(date:*),Bash(jq:*),Bash(ls:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git config:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git branch:*),Bash(git fetch:*),Bash(git ls-remote:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*),Bash(gh pr edit:*)"

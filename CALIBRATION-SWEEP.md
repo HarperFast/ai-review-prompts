@@ -95,11 +95,14 @@ First check whether an OPEN PR for this week already exists: head branch
 If it exists, REUSE its branch (push further commits) instead of opening a
 second PR — re-runs must not create duplicates.
 
-a. Create or resume the branch — never force-reset it:
-   `git fetch origin calibration/week-of-<WEEK>` first; if that ref
-   exists, `git checkout -b calibration/week-of-<WEEK>
-   origin/calibration/week-of-<WEEK>` (resume the existing work), else
-   `git checkout -b calibration/week-of-<WEEK>` off the current
+a. Create or resume the branch — never force-reset it. Probe with
+   `git ls-remote --heads origin calibration/week-of-<WEEK>` (empty
+   output = branch doesn't exist; unlike `git fetch` of a missing ref,
+   this doesn't exit non-zero). If it exists:
+   `git fetch origin calibration/week-of-<WEEK>` then
+   `git checkout -b calibration/week-of-<WEEK>
+   origin/calibration/week-of-<WEEK>` (resume the existing work);
+   else `git checkout -b calibration/week-of-<WEEK>` off the current
    checkout (which the workflow puts on latest `main`). Do not use
    `-B` — it would reset an existing branch to `main` and discard the
    prior run's commits.
