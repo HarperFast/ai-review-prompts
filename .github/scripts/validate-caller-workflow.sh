@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Validate consumer caller workflows for the AI workflow chain.
 # Runs in a CONSUMER repo's checkout (harper, oauth, etc.) against
-# its `.github/workflows/claude-*.yml` files. The companion validator
+# its `.github/workflows/claude-*.yml` and `gemini-*.yml` files —
+# both providers' callers grant `pull-requests: write` and delegate
+# to a reusable here, so both need the same fail-closed guard
+# (gemini coverage was a gap flagged in rocksdb-js#701 review
+# feedback). The companion validator
 # in `validate-auth-gate-invariants.sh` validates the *reusables*
-# (`_claude-*.yml`) inside this repo; this one validates the
-# *callers* in consumer repos.
+# (`_*-{review,mention,issue-to-pr}.yml`) inside this repo; this
+# one validates the *callers* in consumer repos.
 #
 # STRUCTURAL lint, not a semantic test. Catches:
 #
@@ -28,7 +32,8 @@
 # below catches the actual supply-chain risk.
 #
 # Inputs (none — runs in the consumer repo's checkout). Validates:
-#   .github/workflows/claude-*.yml
+#   .github/workflows/claude-*.{yml,yaml}
+#   .github/workflows/gemini-*.{yml,yaml}
 #
 # Exit code:
 #   0  all callers pass (or no caller files present)
@@ -43,9 +48,9 @@ fail() {
 command -v yq >/dev/null || fail "yq not available on runner"
 
 shopt -s nullglob
-files=(.github/workflows/claude-*.yml)
+files=(.github/workflows/claude-*.{yml,yaml} .github/workflows/gemini-*.{yml,yaml})
 if [ "${#files[@]}" -eq 0 ]; then
-  echo "No claude-*.yml caller workflows found; nothing to validate."
+  echo "No claude or gemini caller workflows found; nothing to validate."
   exit 0
 fi
 
@@ -90,4 +95,4 @@ for f in "${files[@]}"; do
 done
 
 echo ""
-echo "All claude-*.yml caller workflows pass invariants."
+echo "All AI-review caller workflows pass invariants."

@@ -4,7 +4,7 @@ Reverse-chronological log of weekly review-prompt calibration. Each entry summar
 
 ## Week of 2026-07-13
 
-Sources: raw verdict-labeled issues from [HarperFast/ai-review-log](https://github.com/HarperFast/ai-review-log) (pre-fetched). The curated `Calibration log` / `False-negative log` supplements were empty for this week. This is the first sweep run from the GitHub Actions runner (successor to the disabled claude.ai routine); the week's signal arrived as a single bulk triage batch (all verdicts applied 2026-07-16/17) rather than daily sweeps, and **13 `verdict:pending` issues remain open**, so the mix below is a partial read of the week.
+Sources: raw verdict-labeled issues from [HarperFast/ai-review-log](https://github.com/HarperFast/ai-review-log) (pre-fetched). The curated `Calibration log` / `False-negative log` supplements were empty for this week. This is the first sweep run from the GitHub Actions runner (successor to the disabled claude.ai routine); the week's signal arrived as a single bulk triage batch (all verdicts applied 2026-07-16/17) rather than daily sweeps, and **13 `verdict:pending` issues remain open**, so the mix below is a partial read of the week. _(Counts are the 2026-07-17 snapshot; post-snapshot churn — e.g. [#942](https://github.com/HarperFast/ai-review-log/issues/942) reopened for re-review after fresh runs, late auto-applies — shifts individual cells by ±1 and rolls into the following week's window.)_
 
 ### Verdict mix
 
@@ -47,6 +47,101 @@ Signal weighting: the corroboration this week is unusually human-heavy — @kris
 **None — log-only week.** Every recurring, corroborated class is already named by live `universal.md` text (falsy-vs-nullish guards, numeric coercion and range, setup/teardown leaks, error/abort paths) or by the still-open [PR #73](https://github.com/HarperFast/ai-review-prompts/pull/73) security-deflation / fail-closed additions. The week's misses are same-week recurrences of freshly-shipped (or not-yet-merged) guidance, not new blind spots — so the conservative call per the rubric is to add nothing and watch whether next week's mix moves once that text has run a full cycle (and once #73/#77 merge). Watch-list carried forward: the `.pipe()`→`stream.pipeline()` idiom (#953), the param-routing / trailing-slash cluster (#939, now 2 points across weeks), and the `node -e` argv false-positive + re-raise-without-engaging-counter-evidence behavior (#947).
 
 (Open calibration PRs at time of writing: [#73](https://github.com/HarperFast/ai-review-prompts/pull/73) week of 2026-06-29 — `universal.md` edits, unmerged; [#77](https://github.com/HarperFast/ai-review-prompts/pull/77) week of 2026-07-06 — log-only. Neither is duplicated or contradicted here.)
+
+## Week of 2026-07-06
+
+Primary source: the week's verdict-labeled issues in [HarperFast/ai-review-log](https://github.com/HarperFast/ai-review-log), pre-fetched directly (raw labels, per the successor routine). Supplements: [Calibration log #846](https://github.com/HarperFast/ai-review-log/issues/846) · [False-negative log #870](https://github.com/HarperFast/ai-review-log/issues/870) — both present but carry only their scaffolding headers this week (the rolling daily-summary routines that populate them have stalled), so all synthesis below is from raw labels.
+
+### Verdict mix
+
+**102 issues triaged: useful 98 · noise 3 · partial 1** (96% useful). 13 `verdict:pending` issues remain open, so the week's signal is largely but not fully settled. A very clean, useful-heavy week concentrated in one large 07-10 verdict sweep; findings were sparse (10 of the 98 useful entries carried an actual blocker/finding, the other 88 were genuine "no blockers" passes).
+
+**Per model:**
+
+| Model | useful | noise | partial | total |
+|-------|--------|-------|---------|-------|
+| claude-sonnet-4-6 | 94 | 1 | 1 | 96 |
+| gemini-3-flash-preview | 4 | 2 | 0 | 6 |
+
+No `claude-sonnet-5` canary entries landed this week — the harper canary produced no triaged verdicts, so there is no sonnet-5-vs-sonnet-4-6 read to report. All 94 Claude entries ran on `claude-sonnet-4-6`.
+
+**Per prompt ref (short SHA):**
+
+| Prompt ref | useful | noise | partial | total |
+|------------|--------|-------|---------|-------|
+| `9cf49d23cb04` (claude + gemini-on-oauth) | 98 | 1 | 1 | 100 |
+| `d1d9a655e969` (gemini) | 0 | 1 | 0 | 1 |
+| `accea2706fae` (gemini) | 0 | 1 | 0 | 1 |
+
+The two non-`9cf49d23cb04` refs are the prompt SHAs the gemini reviewer ran against on this repo's own prompt-layer PRs (noise, below); there is no before/after prompt-change read to draw — `9cf49d23cb04` has been the live claude ref across the whole window.
+
+**Per repo:** harper 69 (68 useful + 1 noise) · harper-pro 23 (all useful) · oauth 8 (7 useful + 1 partial) · ai-review-prompts 2 (both noise, gemini).
+
+### Recurring NOISE patterns (→ none to add)
+
+All three noise calls are already-covered shapes, and none is the review *over-flagging* — each is a vacuous "no blockers" on a diff with no reviewable surface:
+
+1. **Lint-only mechanical diff** — [#847](https://github.com/HarperFast/ai-review-log/issues/847) (harper#1612): a +1/−1 `node:assert/strict` → `node:assert` import swap, the follow-through of the #1558 lint rule. No correctness surface; the clean run was a non-event. Covered by the existing **"Mechanical, no-logic diffs"** bullet + the `<!-- review:no-log -->` marker.
+2. **Provider runs on prompt-prose PRs** — [#842](https://github.com/HarperFast/ai-review-log/issues/842) (ai-review-prompts#73) and [#820](https://github.com/HarperFast/ai-review-log/issues/820) (ai-review-prompts#72): gemini reviews of markdown-only prompt-layer PRs against this repo. Vacuous by construction — no code surface to verify — and the same convention already logged as [#670](https://github.com/HarperFast/ai-review-log/issues/670)/[#747](https://github.com/HarperFast/ai-review-log/issues/747). Both are gemini (bot-only) and doc-only regardless.
+
+No new suppression text warranted; the existing rules already name these shapes. Nothing the review is over-flagging surfaced this week.
+
+### Recurring PARTIAL / FALSE-NEGATIVE patterns (→ none new; reinforces open PR #73)
+
+One partial this week:
+
+1. **Severity deflation / under-calling on a clean review** — [#903](https://github.com/HarperFast/ai-review-log/issues/903) (oauth#167): Claude's single review returned "no blockers" while gemini's leg on the same PR ([#902](https://github.com/HarperFast/ai-review-log/issues/902)) caught a real finding the author then fixed (commit `2c1b2a9`; gemini's re-review confirmed "Prior 1 finding(s) resolved"). **Human-corroborated** (triaged by Nathan) **and author-fixed and peer-corroborated** — a strong single point, same class as the #699/#700 precedent.
+
+Signal weighting: this is the highest-weight point of the week (human + author-fix + peer), but it is a *single* point and its specific technical sub-class isn't recorded in the triage note (the missed finding lives in the gemini #902 leg, outside the pre-fetched Claude-verdict set). It is the same "under-called clean review / severity deflation" class that the still-open **[PR #73](https://github.com/HarperFast/ai-review-prompts/pull/73)** (week of 2026-06-29, unmerged) already addresses by adding severity-*deflation* guidance to `universal.md`. Per the sweep rule on open prior calibration PRs, this week does **not** add competing or duplicate text — #903 corroborates #73's direction and should be weighed when that PR is reviewed.
+
+Positive corroboration worth noting: on the oauth signing-key GC bug, Claude ([#852](https://github.com/HarperFast/ai-review-log/issues/852)) and gemini ([#851](https://github.com/HarperFast/ai-review-log/issues/851)) independently flagged the same blocker — the clean-review under-call in #903 is not a systemic collapse of Claude's calibration on oauth.
+
+### Prompt changes this week
+
+**No prompt changes this week.** The noise calls are all already-covered non-event shapes (nothing over-flagged), and the single false-negative (#903) is one data point in a class already handled by the open, unmerged PR #73 — below the "≥2 independent, ideally human-corroborated points, and don't duplicate an open PR" bar. A log-only week.
+
+## Week of 2026-06-29
+
+Sources: [Calibration log #748](https://github.com/HarperFast/ai-review-log/issues/748) · [False-negative log #772](https://github.com/HarperFast/ai-review-log/issues/772)
+
+### Verdict mix
+
+**138 issues triaged across six daily sweeps: useful 115 · noise 9 · partial 14** (83% useful). Signal concentrated in two large bulk sweeps (06-29 and 07-03); the other four days were low-volume and clean.
+
+| Sweep | Triaged | useful | noise | partial |
+|-------|---------|--------|-------|---------|
+| 06-29 | 62 | 48 | 6 | 8 |
+| 06-30 | 3 | 3 | 0 | 0 |
+| 07-01 | 2 | 2 | 0 | 0 |
+| 07-03 | 68 | 59 | 3 | 6 |
+| 07-04 | 2 | 2 | 0 | 0 |
+| 07-05 | 1 | 1 | 0 | 0 |
+
+(Calibration log carried 06-29 → 07-05; false-negative log carried four daily scans 06-30 → 07-03.)
+
+### Recurring NOISE patterns (→ none to add)
+
+All 9 noise calls are the same already-covered mode: a full "no blockers" run on a diff with zero correctness/security surface — Dockerfile build-ARG ([#740](https://github.com/HarperFast/ai-review-log/issues/740)), a `HARPER_SAFE_MODE`-gated startup log ([#719](https://github.com/HarperFast/ai-review-log/issues/719)), comments-only docs ([#717](https://github.com/HarperFast/ai-review-log/issues/717)), an explicit "verification-only, do not merge" branch ([#697](https://github.com/HarperFast/ai-review-log/issues/697)), a log-level demotion ([#693](https://github.com/HarperFast/ai-review-log/issues/693)), a 2-line config-param registration ([#692](https://github.com/HarperFast/ai-review-log/issues/692)); and on 07-03 an additive optional `pathname?: string` type field ([#766](https://github.com/HarperFast/ai-review-log/issues/766)/[#765](https://github.com/HarperFast/ai-review-log/issues/765)) and a markdown/prompt-only diff ([#747](https://github.com/HarperFast/ai-review-log/issues/747)). All are fully named by the existing **"Mechanical, no-logic diffs"** bullet + the `<!-- review:no-log -->` marker in `universal.md`. The one arguably-newer shape — a type-only additive field with no runtime surface — is a single PR (two provider runs) and already sits within "no reviewable surface"; **watch-listed, no edit**.
+
+### Recurring PARTIAL / FALSE-NEGATIVE patterns (→ edit)
+
+The week's headline is a **severity-deflation** cluster that dominated both bulk sweeps' partials (5/8 on 06-29, 4/6 on 07-03), plus two corroborated false-negative classes. Signal weighting anchors on author-fixed / human-flagged points; gemini-only items reinforce rather than stand alone.
+
+1. **Severity deflation on security / hardening paths (→ `universal.md`).** The dominant partial mode: a real, peer-flagged defect talked *down* to a clean pass with an unproven rationalization. Stale `context.user` called "safe for RBAC-level checks" — gemini rated CRITICAL, **author fixed** ([#775](https://github.com/HarperFast/ai-review-log/issues/775), harper#1535); a silent env-decrypt skip called correct, later **hardened warn→error** ([#760](https://github.com/HarperFast/ai-review-log/issues/760), harper#1528); CDP-hardening items declined as "no security escalation" / "not reachable in production" ([#786](https://github.com/HarperFast/ai-review-log/issues/786), harper#1547); a `tag_name` shell-interpolation under-called "negligible" vs gemini's blocker ([#699](https://github.com/HarperFast/ai-review-log/issues/699)). Nine points across the two bulk days, several author-fixed. This is the *mirror* of the inflation the existing "Severity discipline" bullet warns about, which is why it slipped.
+
+2. **Fail-open / validate-at-registration on new surfaces (→ `universal.md`).** New registration/config/dispatch surfaces that silently degrade instead of failing closed: `defineBackend` assigning handlers on truthiness not function-ness → passes registration, crashes at call time (harper#1405, **@kriszyp, author-fixed**); a live-registry miss dispatching the base table class → row-level RBAC drops to table-level authz on create/update/delete, fail-*open* on the gate the PR adds (harper#1522, **@kylebernhardy**); a live reload to zero providers leaving a stale `enabled:true` MCP config (oauth#134, reproduced); `enc:v1` secrets silently skipped with no decryptor registered (harper#1528). Four points, human-corroborated + author-fixed.
+
+3. **Secret leakage on the PR meant to protect secrets (→ `universal.md`).** `set_env_value` values not excluded from the operation log's `cleanBody` (harper#1527); a `clientSecret` in a `pluginDefaults` debug log never passed through `redactSecrets` (oauth#153) — **both author-fixed**. The flat "never log secrets" rule already exists but wasn't catching the specific mode: a new secret-bearing value not routed through the repo's existing redaction path.
+
+_Corroborated but already covered (no edit):_ error/guard `TypeError`s masking the real error (harper#1474, #1521) sit under the existing **"Unvalidated shape"** robustness bullet; worker/subscription teardown races on 07-03 (harper-pro#445/#491, harper#1530) are covered by last week's **"Worker restart / pre-start ordering races"** + the existing setup/teardown and detached-async bullets. The lone severity-*inflation* partial ([#756](https://github.com/HarperFast/ai-review-log/issues/756), a coverage gap flagged as blocker, claude[bot]-only) and the gemini misfire citing files outside a test-only diff ([#780](https://github.com/HarperFast/ai-review-log/issues/780)) are single, uncorroborated points — no edit.
+
+### Prompt changes this week
+
+- **`universal.md` → "Output discipline" / Severity:** added **"Severity deflation on security / hardening paths — the mirror failure"** — a real, peer-flagged defect must not be talked down to a pass via unproven "unreachable" / "no escalation" / "safe" / "negligible" claims; the burden is on demonstrating unreachability, and a clean baseline paired with a peer finding the author then fixed is the signature. Anchored on author-fixed harper#1535 / #1528 / #1547 (partial class #1).
+- **`universal.md` → "Security":** added **"Fail-closed / validate-at-registration on new surfaces"** — validate shape at the boundary and make fallbacks deny/throw, not proceed. Anchored on @kriszyp-fixed harper#1405, @kylebernhardy harper#1522, oauth#134, harper#1528 (FN class #2).
+- **`universal.md` → "Security" / "Secret handling":** extended the existing bullet — on a PR that *adds* a secret-bearing field/op, verify the value is routed through the repo's existing redaction / `cleanBody` / debug-log-allowlist path, not left to a default that logs it verbatim. Anchored on author-fixed harper#1527 + oauth#153 (FN class #3).
+
+No changes to `harper/common.md`, `harper/v5.md`, or `repo-type/plugin.md` — the three edited patterns are general security/robustness discipline (universal), and the Harper-core lifecycle patterns this week were already covered by prior additions.
 
 ## Week of 2026-06-22
 

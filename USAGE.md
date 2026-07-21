@@ -194,7 +194,21 @@ If the bot's output is wrong in a consistent way — false-positive finding, rea
 3. **Branch protection:** enable on `main` and any `release_*` / `v*.x` branches. Require reviews on merge. This is load-bearing — the prompt's "don't push to main" instruction is a soft guardrail, branch protection is the real one.
 4. **CODEOWNERS:** optional but recommended — pair with "Require review from Code Owners" in branch protection.
 5. **Workflow files:** copy `examples/claude-review.yml`, `examples/claude-mention.yml`, `examples/claude-issue-to-pr.yml` into `.github/workflows/` and pin all `uses:` lines to commit SHAs. Adjust `REVIEW_LAYERS` in `claude-review.yml` for your repo (see available layers in this repo). For the Gemini reviewer, add a `gemini-review.yml` caller of `_gemini-review.yml` — this repo's own `.github/workflows/gemini-review.yml` is the canonical reusable-caller shape, including the `if:` toggle; mirror your `claude-review.yml` layers + `repo-specific-checks` so the two providers are comparable on the same PR.
-6. **Caller invariants check:** add a thin `auth-gate-invariants.yml` (or similar) that calls `_validate-caller-workflows.yml` from this repo. It runs on PRs that touch `.github/workflows/claude-*.yml` and rejects: shadow jobs (a non-`uses:` job alongside the legit reusable call would run with the caller's perms and bypass the auth gate); tag/branch refs in `uses:` or `with.ai-review-prompts-ref` (mutable refs defeat SHA-pinning). Make this job a required status check on `main`.
+
+   **Caller `permissions:` (required on every reusable-caller):** grant the union of what the reusable's jobs declare, at the **calling-job** level — never at the workflow level (a workflow-level block caps the reusable's per-job grants below what they need and breaks the run at startup; that's the #39/#40 lesson). Both review reusables need the same union:
+
+   ```yaml
+   jobs:
+     review:
+       uses: HarperFast/ai-review-prompts/.github/workflows/_claude-review.yml@<sha>
+       permissions:
+         contents: read
+         pull-requests: write
+         id-token: write
+   ```
+
+   Don't rely on omitting the block: with no explicit grants the caller inherits the repo's default-workflow-permissions setting, and GitHub silently intersects the reusable's requests with that ceiling — `pull-requests: write` survives only while the repo default is "write", so flipping that setting to "read" breaks review posting with unhelpful 403s. Explicit job-level grants keep the caller independent of repo settings (surfaced by rocksdb-js#701 review feedback).
+6. **Caller invariants check:** add a thin `auth-gate-invariants.yml` (or similar) that calls `_validate-caller-workflows.yml` from this repo. It runs on PRs that touch `.github/workflows/claude-*.yml` / `gemini-*.yml` and rejects: shadow jobs (a non-`uses:` job alongside the legit reusable call would run with the caller's perms and bypass the auth gate); tag/branch refs in `uses:` or `with.ai-review-prompts-ref` (mutable refs defeat SHA-pinning). Make this job a required status check on `main`.
 7. **Variables (always-on toggle):** set the `CLAUDE_ALWAYS_ON` / `GEMINI_ALWAYS_ON` repo variables to `true` for any reviewer you want to auto-run on every trusted-author PR; leave a variable unset for opt-in-only (label-triggered). HarperFast core repos set `CLAUDE_ALWAYS_ON=true` to keep Claude's always-on behavior — **set it before merging the caller** so Claude doesn't switch to opt-in on the transition. See §1 "Reviewers & the always-on toggle".
 
 ---

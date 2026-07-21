@@ -1,7 +1,8 @@
 name: Validate caller workflows (reusable)
 
 # Reusable workflow that runs structural validation on a consumer
-# repo's `.github/workflows/claude-*.yml` caller files. Catches:
+# repo's `.github/workflows/claude-*.yml` and `gemini-*.yml` caller
+# files. Catches:
 #
 #   * Shadow jobs — a non-`uses:` job (or a `uses:` outside
 #     HarperFast/) alongside the legit reusable call would run with
@@ -20,10 +21,16 @@ name: Validate caller workflows (reusable)
 #       pull_request:
 #         paths:
 #           - '.github/workflows/claude-*.yml'
+#           - '.github/workflows/claude-*.yaml'
+#           - '.github/workflows/gemini-*.yml'
+#           - '.github/workflows/gemini-*.yaml'
 #       push:
 #         branches: [main]
 #         paths:
 #           - '.github/workflows/claude-*.yml'
+#           - '.github/workflows/claude-*.yaml'
+#           - '.github/workflows/gemini-*.yml'
+#           - '.github/workflows/gemini-*.yaml'
 #     jobs:
 #       validate:
 #         uses: HarperFast/ai-review-prompts/.github/workflows/_validate-caller-workflows.yml@<sha>
