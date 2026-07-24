@@ -29,8 +29,8 @@ run_parse() { # <comment-body>
 # proceed + model selection
 assert_eq "$(run_parse '@claude fix this')"          "true|claude-sonnet-4-6" "@claude first → proceed, sonnet default"
 assert_eq "$(run_parse '   @claude please look')"    "true|claude-sonnet-4-6" "leading whitespace before @claude → proceed"
-assert_eq "$(run_parse '@claude do a deep review')"  "true|claude-opus-4-8"   "'deep' → opus"
-assert_eq "$(run_parse '@claude DEEP dive')"         "true|claude-opus-4-8"   "'DEEP' (case-insensitive) → opus"
+assert_eq "$(run_parse '@claude do a deep review')"  "true|claude-opus-5"   "'deep' → opus"
+assert_eq "$(run_parse '@claude DEEP dive')"         "true|claude-opus-5"   "'DEEP' (case-insensitive) → opus"
 assert_eq "$(run_parse '@claude deepen the tests')"  "true|claude-sonnet-4-6" "'deepen' (no word boundary) → sonnet, not opus"
 
 # rejection (precision gate)

@@ -161,6 +161,6 @@ jobs:
             author as "calibration-sweep[bot] <noreply@github.com>" before
             committing.
           claude_args: |
-            --model claude-opus-4-8
+            --model claude-opus-5
             --max-turns 200
             --allowedTools "Read,Grep,Glob,Edit,Write,Bash(date:*),Bash(jq:*),Bash(ls:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git config:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git branch:*),Bash(git fetch:*),Bash(git ls-remote:*),Bash(git rev-parse:*),Bash(git show:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
