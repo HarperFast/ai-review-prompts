@@ -60,6 +60,14 @@ for bin in gh yq jq claude git; do
   command -v "$bin" >/dev/null || { echo "missing: $bin" >&2; exit 2; }
 done
 
+# GNU timeout on Linux, gtimeout via coreutils on macOS, perl fallback.
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
+run_with_timeout() {
+  local secs="$1"; shift
+  if [ -n "$TIMEOUT_BIN" ]; then "$TIMEOUT_BIN" "$secs" "$@"
+  else perl -e 'alarm shift; exec @ARGV' "$secs" "$@"; fi
+}
+
 CACHE="${EVAL_CACHE:-$HOME/.cache/ai-review-evals}"
 mkdir -p "$CACHE/repos"
 OUT_DIR="$REPO_ROOT/evals-out/$(date -u +%Y%m%dT%H%M%SZ)"
@@ -112,10 +120,18 @@ for fy in "$FIXTURES_DIR"/fixtures/$FIXTURE_GLOB.yml; do
   fi
   git -C "$rdir" fetch --quiet origin "pull/$pr/head" 2>/dev/null || true
   git -C "$rdir" cat-file -e "$reviewed" 2>/dev/null || git -C "$rdir" fetch --quiet origin "$reviewed"
+  # Standalone clone containing ONLY the reviewed commit's ancestry —
+  # a shared worktree would expose post-review refs (incl. the fix
+  # commit) via `git log --all`, letting the reviewer see the future.
+  # Production reviews can never see past the PR head; neither may evals.
   wdir="$CACHE/worktrees/$id"
-  git -C "$rdir" worktree remove --force "$wdir" 2>/dev/null || true
   rm -rf "$wdir"
-  git -C "$rdir" worktree add --quiet --detach "$wdir" "$reviewed"
+  git -C "$rdir" branch -f eval-tmp "$reviewed"
+  git clone --quiet --single-branch --branch eval-tmp "$rdir" "$wdir"
+  git -C "$wdir" checkout --quiet --detach "$reviewed"
+  git -C "$wdir" branch -D eval-tmp >/dev/null
+  git -C "$wdir" remote remove origin
+  git -C "$rdir" branch -D eval-tmp >/dev/null
 
   # composed layer scope at the ref under test
   layers="$(yq -r ".repos.\"$repo\".layers[]" "$SCRIPT_DIR/repos.yml")"
@@ -137,7 +153,7 @@ for fy in "$FIXTURES_DIR"/fixtures/$FIXTURE_GLOB.yml; do
   } > "$prompt_file"
 
   review_file="$OUT_DIR/$id.review.md"
-  if ! (cd "$wdir" && timeout 1500 claude -p "$(cat "$prompt_file")" \
+  if ! (cd "$wdir" && run_with_timeout 1500 claude -p "$(cat "$prompt_file")" \
         --model "$MODEL" \
         --allowedTools "Read,Grep,Glob,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(cat:*)" \
         ) > "$review_file" 2>"$OUT_DIR/$id.stderr"; then
@@ -154,7 +170,7 @@ $defect
 
 ## Review output under judgment
 $(cat "$review_file")"
-  if ! timeout 300 claude -p "$judge_prompt" --model "$JUDGE_MODEL" \
+  if ! run_with_timeout 300 claude -p "$judge_prompt" --model "$JUDGE_MODEL" \
        > "$judge_file.raw" 2>/dev/null; then
     echo -e "$id\tERROR\tjudge run failed" >> "$RESULTS"
     echo "   ERROR (judge run failed)"
