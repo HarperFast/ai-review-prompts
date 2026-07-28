@@ -36,19 +36,19 @@ The sonnet-5 canary cell (23) clears the floor at 70% useful / 13% partial; the 
 
 All 7 noise calls are the same family — a "no blockers" run (three with full run-notes) on a diff with no correctness or security surface — and every one was human-confirmed by heskew. Four are already named by the **"Mechanical, no-logic diffs"** bullet: a `pull_request` node-matrix conditional in a workflow ([#1032](https://github.com/HarperFast/ai-review-log/issues/1032)), a CI-lane workflow sync ([#1024](https://github.com/HarperFast/ai-review-log/issues/1024)), and two release bumps touching only `CHANGELOG.md`/`package.json`/lockfile ([#1027](https://github.com/HarperFast/ai-review-log/issues/1027), [#1028](https://github.com/HarperFast/ai-review-log/issues/1028)).
 
-The one **new, corroborated sub-shape** is **type-only diffs with no runtime effect** — 2 independent points, both `harper`/sonnet-5, both heskew-confirmed: `recordCommitLatency` widened `Promise<void>` → `Promise<unknown>` to unblock `tsc` ([#1040](https://github.com/HarperFast/ai-review-log/issues/1040), which produced a four-bullet run-notes write-up over a behavior-neutral one-liner), and a `Promise<void>` → `Promise<number | void>` retype plus a removed redundant cast ([#1011](https://github.com/HarperFast/ai-review-log/issues/1011)). Neither has a call site whose behavior changes. → **prompt edit** (below).
+The one arguably-new sub-shape is **type-only diffs with no runtime effect** ([#1040](https://github.com/HarperFast/ai-review-log/issues/1040), [#1011](https://github.com/HarperFast/ai-review-log/issues/1011)) — but review feedback on this PR established these are NOT independent points: both map to the same author fixing the same TS2345 regression in the same function (`resources/DatabaseTransaction.ts::recordCommitLatency`, harper#1853 merged / harper#1890 closed unmerged, both fallout of harper#1688). One underlying signal → below the ≥2-independent bar → **watch-listed, no prompt edit**. When an independent occurrence appears, the edit should be phrased around the *public declaration surface and build status* (type-check passes, emitted output and declarations unchanged), not just "no runtime effect" — a type-only diff can still break `tsc` or shift an inferred exported type.
 
 Two single-point shapes are **watch-listed, no edit**: reviewer-tool configuration as a diff surface (`.gemini/config.yaml` + `.gemini/styleguide.md`, [#1026](https://github.com/HarperFast/ai-review-log/issues/1026)) — adjacent to "inert CI-config diffs" but not a workflow; and a release PR whose run re-traced the security fixes of the *sibling* PRs it bundles instead of its own +12/-3 diff ([#1028](https://github.com/HarperFast/ai-review-log/issues/1028)) — the existing "do not manufacture run-notes that restate the PR body" line already points at this, so reinforce rather than add.
 
 ### Recurring PARTIAL / FALSE-NEGATIVE patterns (→ one edit; the rest covered or pre-text)
 
-Every partial is the same structural shape: a clean "no blockers" (or near-clean) run while a second reviewer — gemini inline, then a human (@kriszyp, heskew, cb1kenobi) who in most cases *fixed* it — caught a real defect on the reviewed code. Corroboration this week is strongly human/author-fixed rather than bot-only: seven of the ten partials name a specific author commit that landed the fix.
+Every partial is the same structural shape: a clean "no blockers" (or near-clean) run while a second reviewer — gemini inline, then a human (@kriszyp, heskew, cb1kenobi) who in most cases *fixed* it — caught a real defect on the reviewed code. Corroboration this week is strongly human/author-fixed rather than bot-only: eight of the ten partials name a specific author commit that landed the fix.
 
-**1. Verified the enforcing side of a new guard, never the producing side (new — 3 points, all `oauth`, 2 author-fixed).** The week's one genuinely uncovered class:
+**1. Verified the enforcing side of a new guard, never the producing side (new — 3 points, all `oauth`, all three author-fixed).** The week's one genuinely uncovered class:
 
 - [#1019](https://github.com/HarperFast/ai-review-log/issues/1019) (oauth#183) — the run traced the callback-side `sessionId` CSRF binding exhaustively (ordering, backward-compat, all four tests) and passed it clean; the MCP *initiation* path never mints `sessionId` into the token, so the new check silently no-ops for MCP flows. Author-fixed `300b06bed`.
 - [#1021](https://github.com/HarperFast/ai-review-log/issues/1021) (oauth#184) — the run enumerated `dcrEnabled()`'s cases and declared "all three cases correct"; a bare YAML `dynamicClientRegistration:` parses to `null`, which `dcrConfig !== undefined` treats as configured. Author-fixed `01a6f428b` ("fail closed instead of TypeError").
-- [#1042](https://github.com/HarperFast/ai-review-log/issues/1042) (oauth#192) — the run asserted an env-expanded `"false"` "cannot activate the gate"; @kriszyp's inline shows an *unexpanded* `${VAR}` placeholder survives `coerceConfigBoolean` as a truthy string and silently switches on a documented default-off gate. Unresolved.
+- [#1042](https://github.com/HarperFast/ai-review-log/issues/1042) (oauth#192) — the run asserted an env-expanded `"false"` "cannot activate the gate"; @kriszyp's inline shows an *unexpanded* `${VAR}` placeholder survives `coerceConfigBoolean` as a truthy string and silently switches on a documented default-off gate. Author-fixed `160992d4` (boolean config normalization made total; oauth#192 merged 2026-07-23).
 
 The common failure is treating a gate's internal case analysis as sufficient without asking who writes the value it reads. Not covered by "Dispatch surfaces" (wrappers), "Fail-closed / validate-at-registration" (rejecting malformed input at a *new* surface), or "Falsy vs nullish guards" (which names the `!= null` fix but not the producer-side trace that surfaces the need for it). → **prompt edit** (below).
 
@@ -60,10 +60,11 @@ The common failure is treating a gate's internal case analysis as sufficient wit
 
 ### Prompt changes this week
 
-Two small, targeted additions to `universal.md` — each backed by ≥ 2 independent, human-confirmed points:
+One targeted addition to `universal.md`, backed by 3 independent, human-confirmed, all-author-fixed points:
 
 1. **Security — "A new guard is only as good as whatever populates the value it reads."** New bullet after the fail-closed one: when a PR adds an enforcement check, enumerate every path that *produces* the value it keys on (including paths that never set it, and shapes the config layer can actually emit) before calling the gate correct. Cites oauth#183 / #184 / #192 from the three partials above.
-2. **What to ignore — "type-only edits with no runtime effect"** added to the "Mechanical, no-logic diffs" enumeration, with an explicit carve-out that a type change on an *exported* symbol remains an API-contract change and does need review (so this cannot swallow the Architecture → API contracts rule).
+
+_(A second edit — a type-only-diff carve-out under "Mechanical, no-logic diffs" — shipped in this PR's first revision and was withdrawn on review: its two supporting points turned out to be the same underlying fix, below the ≥2-independent bar. Watch-listed above with the improved declaration-surface framing for when an independent point appears.)_
 
 No `harper/*.md` or `repo-type/*.md` edits: the `oauth` cluster is a plugin-agnostic guard-design shape, not Harper- or plugin-layer-specific.
 
