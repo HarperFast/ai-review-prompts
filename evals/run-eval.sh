@@ -75,12 +75,18 @@ mkdir -p "$OUT_DIR"
 
 # --- prompts checkout under test -------------------------------------
 if [ -n "$REF" ]; then
-  PROMPTS_DIR="$CACHE/prompts-$REF"
+  PROMPTS_DIR="$CACHE/prompts-${REF//\//_}"
   if [ ! -d "$PROMPTS_DIR/.git" ]; then
     gh repo clone HarperFast/ai-review-prompts "$PROMPTS_DIR" -- --quiet
   fi
   git -C "$PROMPTS_DIR" fetch --quiet origin
-  git -C "$PROMPTS_DIR" checkout --quiet "$REF"
+  # Resolve the ref against the FETCHED remote first and check out the
+  # commit detached — `checkout <branch>` would reuse a stale local
+  # branch and silently evaluate old prompt text on reruns.
+  commit="$(git -C "$PROMPTS_DIR" rev-parse --verify --quiet "origin/$REF" \
+         || git -C "$PROMPTS_DIR" rev-parse --verify --quiet "$REF")" \
+    || { echo "cannot resolve --ref '$REF'" >&2; exit 2; }
+  git -C "$PROMPTS_DIR" checkout --quiet --detach "$commit"
 else
   PROMPTS_DIR="$REPO_ROOT"
   REF="$(git -C "$REPO_ROOT" rev-parse --short HEAD)(working-tree)"
@@ -127,7 +133,11 @@ for fy in "$FIXTURES_DIR"/fixtures/$FIXTURE_GLOB.yml; do
   wdir="$CACHE/worktrees/$id"
   rm -rf "$wdir"
   git -C "$rdir" branch -f eval-tmp "$reviewed"
-  git clone --quiet --single-branch --branch eval-tmp "$rdir" "$wdir"
+  # --no-tags: --single-branch still imports tag refs, and a tag on a
+  # post-review commit re-exposes the future through git log --all.
+  # --no-local: a local-path clone shares/hardlinks the whole object
+  # store, so future commits' objects would remain reachable by SHA.
+  git clone --quiet --no-local --no-tags --single-branch --branch eval-tmp "$rdir" "$wdir"
   git -C "$wdir" checkout --quiet --detach "$reviewed"
   git -C "$wdir" branch -D eval-tmp >/dev/null
   git -C "$wdir" remote remove origin
@@ -153,8 +163,15 @@ for fy in "$FIXTURES_DIR"/fixtures/$FIXTURE_GLOB.yml; do
   } > "$prompt_file"
 
   review_file="$OUT_DIR/$id.review.md"
+  # --setting-sources user + --strict-mcp-config: the checkout is
+  # historical PR content and must not contribute executable startup
+  # surface — project .claude settings/hooks and project MCP servers
+  # would run with the evaluator's credentials before --allowedTools
+  # ever applies. Only the evaluator's own user-level config loads.
   if ! (cd "$wdir" && run_with_timeout 1500 claude -p "$(cat "$prompt_file")" \
         --model "$MODEL" \
+        --setting-sources user \
+        --strict-mcp-config \
         --allowedTools "Read,Grep,Glob,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(cat:*)" \
         ) > "$review_file" 2>"$OUT_DIR/$id.stderr"; then
     echo -e "$id\tERROR\treview run failed" >> "$RESULTS"
@@ -199,8 +216,22 @@ for v in caught partial missed ERROR UNPARSEABLE; do
 done
 echo "results: $RESULTS"
 
+# An empty run is not a pass — a bad glob must not exit 0.
+if [ ! -s "$RESULTS" ]; then
+  echo "ERROR: no fixtures matched '$FIXTURE_GLOB'" >&2
+  exit 2
+fi
+
+# Incomplete evaluations are not successful gates either.
+bad="$(cut -f2 "$RESULTS" | grep -cxE "ERROR|UNPARSEABLE" || true)"
+if [ "$bad" -gt 0 ]; then
+  echo "ERROR: $bad fixture(s) failed to evaluate — run is incomplete" >&2
+  exit 3
+fi
+
 # --- baseline regression gate ----------------------------------------
-if [ -n "$BASELINE" ] && [ -f "$BASELINE" ]; then
+if [ -n "$BASELINE" ]; then
+  [ -f "$BASELINE" ] || { echo "ERROR: baseline '$BASELINE' not found" >&2; exit 2; }
   regressed=0
   while IFS=$'\t' read -r id verdict _; do
     prev="$(awk -F'\t' -v id="$id" '$1==id{print $2; exit}' "$BASELINE" || true)"
@@ -209,5 +240,18 @@ if [ -n "$BASELINE" ] && [ -f "$BASELINE" ]; then
       regressed=1
     fi
   done < "$RESULTS"
+  # Every baseline fixture the glob selects must actually have been
+  # evaluated — a fixture that vanished from the corpus or silently
+  # skipped is a gate hole, not a pass.
+  while IFS=$'\t' read -r id _; do
+    # shellcheck disable=SC2254
+    case "$id" in
+      $FIXTURE_GLOB)
+        grep -q "^${id}$(printf '\t')" "$RESULTS" || {
+          echo "REGRESSION: baseline fixture $id was not evaluated in this run" >&2
+          regressed=1
+        } ;;
+    esac
+  done < "$BASELINE"
   exit "$regressed"
 fi
