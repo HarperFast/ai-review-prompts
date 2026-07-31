@@ -114,7 +114,7 @@ for fy in "$FIXTURES_DIR"/fixtures/$FIXTURE_GLOB.yml; do
   echo "── $id ($repo#$pr @ ${reviewed:0:8})"
 
   # source checkout at the reviewed head
-  rdir="$CACHE/repos/${repo##*/}"
+  rdir="$CACHE/repos/${repo//\//_}"
   if [ ! -d "$rdir/.git" ]; then
     gh repo clone "$repo" "$rdir" -- --quiet
   fi
@@ -176,10 +176,17 @@ $(cat "$review_file")"
     echo "   ERROR (judge run failed)"
     continue
   fi
-  # tolerate fenced or prose-wrapped JSON
-  verdict="$(sed -n 's/.*"verdict"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p' "$judge_file.raw" | head -1)"
-  evidence="$(sed -n 's/.*"evidence"[[:space:]]*:[[:space:]]*"\(.*\)"[}].*/\1/p' "$judge_file.raw" | head -1)"
+  # Tolerate fenced / prose-wrapped / pretty-printed JSON: flatten
+  # newlines, grab the first flat object, parse with jq (the schema has
+  # no nested objects, so {[^{}]*} is safe).
+  json="$(tr '\n' ' ' < "$judge_file.raw" | grep -o '{[^{}]*}' | head -1 || true)"
+  verdict="$(printf '%s' "$json" | jq -r '.verdict // empty' 2>/dev/null || true)"
+  evidence="$(printf '%s' "$json" | jq -r '.evidence // empty' 2>/dev/null || true)"
   [ -n "$verdict" ] || verdict="UNPARSEABLE"
+  printf '%s' "$json" > "$judge_file"
+  # Reclaim the eval clone on a clean verdict; keep it for debugging
+  # when parsing failed.
+  [ "$verdict" != "UNPARSEABLE" ] && rm -rf "$wdir"
   echo -e "$id\t$verdict\t$evidence" >> "$RESULTS"
   echo "   $verdict — $evidence"
 done
@@ -196,7 +203,7 @@ echo "results: $RESULTS"
 if [ -n "$BASELINE" ] && [ -f "$BASELINE" ]; then
   regressed=0
   while IFS=$'\t' read -r id verdict _; do
-    prev="$(grep -E "^$id[[:space:]]" "$BASELINE" | cut -f2 || true)"
+    prev="$(awk -F'\t' -v id="$id" '$1==id{print $2; exit}' "$BASELINE" || true)"
     if [ "$prev" = "caught" ] && [ "$verdict" != "caught" ]; then
       echo "REGRESSION: $id was caught in baseline, now $verdict" >&2
       regressed=1
