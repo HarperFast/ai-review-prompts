@@ -117,6 +117,16 @@ for fy in "$FIXTURES_DIR"/fixtures/$FIXTURE_GLOB.yml; do
   base="$(yq -r '.base_sha' "$fy")"
   defect="$(yq -r '.defect' "$fy")"
 
+  # The id names output paths and an rm -rf target below — enforce the
+  # slug contract and filename agreement before any use, so a hostile
+  # or corrupt fixture (id: ../../..) can never steer path operations.
+  stem="$(basename "$fy" .yml)"
+  if [ "$id" != "$stem" ] || ! printf '%s' "$id" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+    echo -e "$stem\tERROR\tinvalid fixture id" >> "$RESULTS"
+    echo "── $stem: ERROR (fixture id '$id' violates the slug contract)"
+    continue
+  fi
+
   echo "── $id ($repo#$pr @ ${reviewed:0:8})"
 
   # source checkout at the reviewed head
@@ -163,15 +173,20 @@ for fy in "$FIXTURES_DIR"/fixtures/$FIXTURE_GLOB.yml; do
   } > "$prompt_file"
 
   review_file="$OUT_DIR/$id.review.md"
-  # --setting-sources user + --strict-mcp-config: the checkout is
-  # historical PR content and must not contribute executable startup
-  # surface — project .claude settings/hooks and project MCP servers
-  # would run with the evaluator's credentials before --allowedTools
-  # ever applies. Only the evaluator's own user-level config loads.
+  # Hermetic review run. --setting-sources "": project/local sources
+  # would execute the historical checkout's hooks with the evaluator's
+  # credentials, and the user source imports the evaluator's own
+  # CLAUDE.md/skills/hooks — making the same prompt ref + model produce
+  # machine-specific verdicts. --tools restricts the available surface
+  # (--allowedTools only pre-approves; it does not remove tools), and
+  # unlisted tools fail closed in -p mode. Repo instructions reach the
+  # reviewer only as pinned text via the composed scope in the prompt,
+  # never as executable configuration.
   if ! (cd "$wdir" && run_with_timeout 1500 claude -p "$(cat "$prompt_file")" \
         --model "$MODEL" \
-        --setting-sources user \
+        --setting-sources "" \
         --strict-mcp-config \
+        --tools "Bash,Glob,Grep,Read" \
         --allowedTools "Read,Grep,Glob,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(cat:*)" \
         ) > "$review_file" 2>"$OUT_DIR/$id.stderr"; then
     echo -e "$id\tERROR\treview run failed" >> "$RESULTS"
@@ -187,7 +202,10 @@ $defect
 
 ## Review output under judgment
 $(cat "$review_file")"
+  # The judge consumes model-generated review text — run it with zero
+  # tools and the same hermetic settings/MCP isolation as the reviewer.
   if ! run_with_timeout 300 claude -p "$judge_prompt" --model "$JUDGE_MODEL" \
+       --setting-sources "" --strict-mcp-config --tools "" \
        > "$judge_file.raw" 2>/dev/null; then
     echo -e "$id\tERROR\tjudge run failed" >> "$RESULTS"
     echo "   ERROR (judge run failed)"
@@ -199,7 +217,11 @@ $(cat "$review_file")"
   json="$(tr '\n' ' ' < "$judge_file.raw" | grep -o '{[^{}]*}' | head -1 || true)"
   verdict="$(printf '%s' "$json" | jq -r '.verdict // empty' 2>/dev/null || true)"
   evidence="$(printf '%s' "$json" | jq -r '.evidence // empty' 2>/dev/null || true)"
-  [ -n "$verdict" ] || verdict="UNPARSEABLE"
+  # Enforce the judge contract: exactly caught|partial|missed. Case
+  # drift is tolerated; any other value/type (bogus, numeric, empty) is
+  # UNPARSEABLE and fails the gate — never a silent pass.
+  verdict="$(printf '%s' "$verdict" | tr '[:upper:]' '[:lower:]')"
+  case "$verdict" in caught|partial|missed) ;; *) verdict="UNPARSEABLE" ;; esac
   printf '%s' "$json" > "$judge_file"
   # Reclaim the eval clone on a clean verdict; keep it for debugging
   # when parsing failed.

@@ -13,6 +13,11 @@ coverage
 *.lcov
 .nyc_output/
 
+# Eval results — review text/evidence derived from private repos must
+# never be committed to this public repo (evals/baseline.tsv is the
+# deliberate, sanitized exception)
+evals-out/
+
 # TypeScript
 *.tsbuildinfo
 dist/
