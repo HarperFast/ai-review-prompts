@@ -212,9 +212,14 @@ $(cat "$review_file")"
     continue
   fi
   # Tolerate fenced / prose-wrapped / pretty-printed JSON: flatten
-  # newlines, grab the first flat object, parse with jq (the schema has
-  # no nested objects, so {[^{}]*} is safe).
-  json="$(tr '\n' ' ' < "$judge_file.raw" | grep -o '{[^{}]*}' | head -1 || true)"
+  # newlines, then take the FIRST flat brace-group that jq-parses with a
+  # .verdict — review/defect text can legitimately contain brace groups
+  # (e.g. a literal ${FLAG} placeholder), so "first flat object" alone
+  # grabs the wrong fragment.
+  json=""
+  while IFS= read -r cand; do
+    if printf '%s' "$cand" | jq -e '.verdict' >/dev/null 2>&1; then json="$cand"; break; fi
+  done < <(tr '\n' ' ' < "$judge_file.raw" | grep -o '{[^{}]*}')
   verdict="$(printf '%s' "$json" | jq -r '.verdict // empty' 2>/dev/null || true)"
   evidence="$(printf '%s' "$json" | jq -r '.evidence // empty' 2>/dev/null || true)"
   # Enforce the judge contract: exactly caught|partial|missed. Case
