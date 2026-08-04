@@ -217,9 +217,12 @@ $(cat "$review_file")"
   # (e.g. a literal ${FLAG} placeholder), so "first flat object" alone
   # grabs the wrong fragment.
   json=""
+  flat="$(tr '\n' ' ' < "$judge_file.raw")"
+  # Greedy match first (handles evidence that itself contains braces),
+  # then flat brace-groups (handles prose/fences around the JSON).
   while IFS= read -r cand; do
     if printf '%s' "$cand" | jq -e '.verdict' >/dev/null 2>&1; then json="$cand"; break; fi
-  done < <(tr '\n' ' ' < "$judge_file.raw" | grep -o '{[^{}]*}')
+  done < <({ printf '%s\n' "$flat" | grep -o '{.*}'; printf '%s\n' "$flat" | grep -o '{[^{}]*}'; } 2>/dev/null)
   verdict="$(printf '%s' "$json" | jq -r '.verdict // empty' 2>/dev/null || true)"
   evidence="$(printf '%s' "$json" | jq -r '.evidence // empty' 2>/dev/null || true)"
   # Enforce the judge contract: exactly caught|partial|missed. Case
