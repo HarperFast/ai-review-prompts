@@ -1,0 +1,24 @@
+# Per-repo review-layer sets, mirroring the fleet caller workflows'
+# `review-layers:` inputs. Keep in sync when a caller's layers change —
+# fixture reviews must run the same scope the production review ran.
+repos:
+  HarperFast/harper:
+    layers:
+      - universal
+      - harper/common
+      - harper/v5
+  HarperFast/oauth:
+    layers:
+      - universal
+      - harper/common
+      - harper/v5
+      - repo-type/plugin
+  HarperFast/harper-pro:
+    layers:
+      - universal
+      - harper/common
+      - harper/v5
+  HarperFast/rocksdb-js:
+    layers:
+      - universal
+      - repo-type/native-addon
