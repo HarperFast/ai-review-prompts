@@ -11,7 +11,8 @@ harper-1961-nested-query-authz-gap	caught
 harper-1963-cleanup-wedge-unhandled-rejection	partial
 harper-pro-594-sync-keygen	partial
 harper-pro-602-send-auth-close-race	caught
-oauth-170-http-issuer-jti-replay	missed
+oauth-170-http-issuer	missed
+oauth-170-jti-replay	missed
 oauth-183-mcp-session-binding	caught
 oauth-184-null-dcr-typeerror	caught
 oauth-192-placeholder-truthy-gate	caught
