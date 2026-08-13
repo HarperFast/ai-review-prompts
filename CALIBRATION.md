@@ -103,6 +103,101 @@ Watch-list carried forward: predicate over-matching (next week's first candidate
 
 (Open PRs at time of writing: [#82](https://github.com/HarperFast/ai-review-prompts/pull/82), the prior week's calibration PR, still unmerged — overlap analysed above; and [#18](https://github.com/HarperFast/ai-review-prompts/pull/18), an unrelated workflow change.)
 
+## Week of 2026-07-27
+
+Sources: raw verdict-labeled issues from [HarperFast/ai-review-log](https://github.com/HarperFast/ai-review-log) (pre-fetched, `closed_at` in `[2026-07-27, 2026-08-03)`). The curated `Calibration log` ([#1086](https://github.com/HarperFast/ai-review-log/issues/1086)) and `False-negative log` ([#1085](https://github.com/HarperFast/ai-review-log/issues/1085)) supplements exist for this week but carry only their boilerplate seed bodies — no daily comments — so, as last week, they contributed nothing. **66 `verdict:pending` issues remain open**, up from 45: triage continues to fall further behind ingest, so this is again a partial read weighted toward whatever the batch reached.
+
+### Verdict mix
+
+**53 issues triaged: useful 34 · noise 3 · partial 16** (64% useful) — up from 56% last week and 53% the week before, the third consecutive improvement, though still short of the 83–85% pre-Actions era. Noise nearly vanished (7 → 3); partials grew in absolute terms (10 → 16) and are now the entire deficit.
+
+Per model:
+
+| Model | Triaged | useful | noise | partial |
+|-------|---------|--------|-------|---------|
+| claude-sonnet-5 | 41 | 27 | 2 | 12 |
+| claude-sonnet-4-6 | 8 | 5 | 0 | 3 |
+| gemini-3-flash-preview | 4 | 2 | 1 | 1 |
+
+Per prompt ref:
+
+| Prompt ref | Triaged | useful | noise | partial |
+|------------|---------|--------|-------|---------|
+| [`82c9484`](https://github.com/HarperFast/ai-review-prompts/commit/82c9484f6f2560be4a37032858311e429bccd56c) (2026-07-21) | 43 | 31 | 2 | 10 |
+| [`9cf49d2`](https://github.com/HarperFast/ai-review-prompts/commit/9cf49d23cb046ecd6c87f3bba86dc3338d6998fb) (2026-06-29) | 9 | 3 | 0 | 6 |
+| [`c3e65f5`](https://github.com/HarperFast/ai-review-prompts/commit/c3e65f577d331f120df29c859771df0b2d04f2e8) (gemini) | 1 | 0 | 1 | 0 |
+
+Per repo: `harper` 41 (27/2/12) · `harper-pro` 9 (6/0/3) · `oauth` 2 (1/0/1) · `ai-review-prompts` 1 (0/1/0).
+
+**This is the first week with a meaningful post-[#73](https://github.com/HarperFast/ai-review-prompts/pull/73) sample: 43 entries at `82c9484`, 72% useful / 23% partial**, against 33% useful / 67% partial for the 9 stragglers still running `9cf49d2`. That direction is encouraging and consistent with last week's prediction, but treat it as suggestive rather than causal — the `9cf49d2` cell (9) is below the ~15 floor, the two cells are not matched on repo or PR difficulty, and the whole comparison sits inside a triage backlog that grew by 21 this week.
+
+Only the sonnet-5 (41) and `82c9484` (43) cells clear the floor. sonnet-4-6 (8) and gemini (4) do not, and **the model gap remains confounded and is still not a model-quality signal** — sonnet-5 drew `harper` core while sonnet-4-6 drew `harper-pro`. gemini is reported for completeness; it is provider-harness output, out of scope for Claude-prompt edits.
+
+Data-quality notes for future readers: three issues ([#1039](https://github.com/HarperFast/ai-review-log/issues/1039), [#1037](https://github.com/HarperFast/ai-review-log/issues/1037), [#818](https://github.com/HarperFast/ai-review-log/issues/818)) carry **two** `prompt:*` labels, so per-ref counts above resolve those from the body's `Prompt ref:` line, not the labels; issue titles are unreliable against bodies; and #818 is a stale close of a 2026-07-02 run that landed in this window by `closed_at` only.
+
+### Recurring NOISE patterns (→ no edit)
+
+Only 3 noise calls, all heskew-confirmed, and all the same vacuous-run shape — a "no blockers" pass on a diff with no correctness or security surface — already named by the **"Mechanical, no-logic diffs"** bullet and its `<!-- review:no-log -->` rule:
+
+- [#1073](https://github.com/HarperFast/ai-review-log/issues/1073) (ai-review-prompts#79, gemini) — an identifier-string bump (`claude-opus-4-8` → `claude-opus-5`) written up with four sections of run notes.
+- [#1058](https://github.com/HarperFast/ai-review-log/issues/1058) (harper#1910) — a one-line addition to a config list; flagged borderline in triage.
+- [#1050](https://github.com/HarperFast/ai-review-log/issues/1050) (harper#1899) — a type-only widening with no runtime effect.
+
+#1050 is a second-and-third look at the type-only sub-shape whose carve-out was **shipped and then withdrawn** last week for being below the ≥2-independent bar. It stays withdrawn: last week's withdrawal turned on the two points being the same author fixing the same TS2345 regression in the same function, and #1050 does not clearly break that (harper#1899 is the same `recordCommitLatency` lineage). **Watch-listed again**, with the same improved framing for when a genuinely independent point appears: phrase it around the *public declaration surface and build status* (type-check passes, emitted output and declarations unchanged), not "no runtime effect." Two noise entries out of 53 is not a pattern worth spending prompt text on.
+
+### Recurring PARTIAL / FALSE-NEGATIVE patterns (→ three edits)
+
+Sixteen partials, and the dominant shape is unchanged from the last two weeks: a clean or near-clean run alongside an **open, unadjudicated peer finding** that the run either never surfaced or explicitly declined. What is new this week is that two *distinct, separately-actionable* classes finally cleared the ≥2-independent bar, and one of them is the opposite failure mode from the usual.
+
+**1. Parity with a sibling call site treated as proof of correctness (new — 2 points, both human-corroborated and author-fixed).** → **prompt edit A**.
+
+- [#1023](https://github.com/HarperFast/ai-review-log/issues/1023) (harper#1869) — an options bag forwarded to lmdb-js `remove()`, which takes a *positional* `ifVersionOrValue` second argument rather than the options object `put()` accepts, so the argument is silently misapplied on the LMDB engine. @cb1kenobi corroborated; the fix in `a44cf4c54` narrowed the call to the RocksDB-with-transaction case.
+- [#1014](https://github.com/HarperFast/ai-review-log/issues/1014) (harper#1858) — `mtlsRequired` propagated onto one HTTP-version server but not its h1/h2 UDS mirror siblings (`server/http.ts:772`, `:811`), an mTLS bypass. gemini flagged both sites high; @kriszyp fixed in `a3b922126`.
+
+Both runs reasoned from "this matches the adjacent pattern." Neither existing bullet covers it: the Harper storage-engine notes describe RocksDB/LMDB divergence in behavior, not in *callee signatures*, and nothing tells a reviewer to enumerate the remaining property set when a flag is copied onto a derived object. This is Harper-layer-specific (engine duality, UDS mirrors) → `harper/common.md`.
+
+**2. Severity inflation on defects confined to test code (2 points, both peer-corroborated in the *opposite* direction — the peer rated the same finding lower).** → **prompt edit B**. The only inflation class in the set, and notable because every other pattern this week is deflation:
+
+- [#1013](https://github.com/HarperFast/ai-review-log/issues/1013) (harper#1856) — a pooled-`Buffer`/`Float32Array` alignment hazard in three test assertions raised as a **blocker** where gemini rated the same three sites *medium* and no production path was affected. The finding was real and drove a fix (`b66d27cd3`), and @kriszyp has since approved the PR; the over-call is the severity, not the observation.
+- [#1016](https://github.com/HarperFast/ai-review-log/issues/1016) (harper#1860) — an untested new monitor `CLOSED`/`releaseReadTxn()` branch raised as a **blocker** where @cb1kenobi filed the same gap himself at *Low*, and the PR merged without the test.
+
+The edit sets both a ceiling and a floor, because the deflation half of this is also real: [#1054](https://github.com/HarperFast/ai-review-log/issues/1054) (harper#1906, merged) shows the reverse — the run declared "no observed gaps" and missed gemini's note that only the last of several async `put`s is awaited in `tableClearSecondaryIndex.test.js:46`, a flakiness race in the very regression test the PR added. So: test-code defects are worth *posting*, as Suggestions, and are not blockers — with an explicit carve-out that a test validating *nothing* (wrong mechanism, stubs the I/O it should exercise, vacuous) stays a finding under the Harper test-validity meta-check, and that an untested new branch which is itself security-critical stays a blocker under the existing second category. Counterexample honored, and it is the reason for that second carve-out: [#999](https://github.com/HarperFast/ai-review-log/issues/999) (harper#1842) — the untested `enforcesCheckPermission` gate was legitimately blocker-grade, because the branch is a security boundary rather than test-quality hygiene.
+
+**3. Concurrent peer review the run never saw (promoted from watch-list — 2 points).** → **prompt edit C**. Last week this stood at a single point and was watch-listed with the note that "a one-line 're-check the threads immediately before posting' would be cheap." It now has a second:
+
+- [#1017](https://github.com/HarperFast/ai-review-log/issues/1017) (carried) — reported "no prior PR comments/threads to reconcile" while gemini had posted three findings, two rated high, **3.5 minutes earlier**; the author confirmed both real.
+- [#1016](https://github.com/HarperFast/ai-review-log/issues/1016) (harper#1860) — a clean run posted concurrently with gemini's high-priority synchronous-throw finding on the same commit; the next run re-raised it as a blocker and the author fixed it in `0e79b24f2`.
+
+Both are timing races against the existing "Before reviewing: read the prior conversation" section rather than gaps in it — the run did read, just too early — so the edit is one bullet inside that section, not a new section. Worth noting for both points: the concurrently-missed finding turned out to be **real** each time, so this is not merely a bookkeeping/etiquette issue.
+
+**4. Severity deflation on open peer findings (the bulk — 8 points, but a compliance gap, not an uncovered class).** Reinforce, no new text. Weighted by corroboration:
+
+- _Human-corroborated (the ones that should carry weight):_ [#1060](https://github.com/HarperFast/ai-review-log/issues/1060) (harper#1913) is the strongest deflation in the set — a clean run, then @kriszyp filed CHANGES_REQUESTED hours later on an add/alter-role truthiness gate in `role_validation.ts` / `hdbTerms.ts` where falsey non-booleans (`0`, `''`, `null`) skip the permission loop, including a latent `super_user` variant, plus a primitive-`in` `TypeError` turning 400s into 500s; author-fixed across `54962ed0c`…`95e9caa03`. [#1091](https://github.com/HarperFast/ai-review-log/issues/1091) (harper#1963) declined two open findings in `resources/auditStore.ts` — gemini HIGH at `:230` (unhandled rejection from an earlier per-loop delete's `committed` promise) and @cb1kenobi at `:248` (a throw in `finally` before `resolve()` re-opening the exact permanent wedge the PR set out to close). [#1057](https://github.com/HarperFast/ai-review-log/issues/1057) (harper-pro#608) surfaced neither of two gemini findings, one of which (`blockCacheEviction.test.mjs` teardown) @cb1kenobi acknowledged as valid. [#1088](https://github.com/HarperFast/ai-review-log/issues/1088) (harper#1958) was drafted `noise` and **overridden to `partial`** by heskew: the run verified the `react-native-fs` override / Dockerfile change substantively but missed that registry installs *do* honor `npm-shrinkwrap.json` (making the override-plus-stub the wrong shape) and that a hardcoded ~15-directory prune list will silently rot; the PR was closed unmerged for those reasons.
+- _Bot-only / unadjudicated (weighted down accordingly):_ [#1083](https://github.com/HarperFast/ai-review-log/issues/1083) (harper#1952) — four gemini threads unresolved with zero human review on the PR; the run did engage the HIGH "rolling-restart stall" thread and argued a false premise from `threadServer.js`/`connectedPorts`, then conceded it was "worth a maintainer glance." [#1080](https://github.com/HarperFast/ai-review-log/issues/1080) (harper-pro#618) and [#1054](https://github.com/HarperFast/ai-review-log/issues/1054) — gemini MEDIUMs never surfaced or waved through as by-design.
+
+Critically, **#1060 and #1091 are exactly what #73's "Severity deflation on security / hardening paths" bullet and last week's "a new guard is only as good as whatever populates the value it reads" bullet already describe** — a truthiness gate on a permission path, and a `finally`-throw that skips the resolve (also already named in the setup/teardown bullet). #1060 ran post-`82c9484`, so this is the text failing to *bind*, not missing text. Adding a fourth restatement would dilute rather than fix. The honest read: the deflation language is present and correct, and the remaining lever is the "don't decline an open peer finding without adjudicating it" discipline — which the concurrent-review edit (C) partially serves by making the peer's finding visible at posting time in the first place.
+
+**Covered / one-off, no edit:**
+
+- [#1043](https://github.com/HarperFast/ai-review-log/issues/1043) — gemini re-raised a finding a maintainer had already dismissed. Already covered by the "honor dismissals from the prior conversation" lines in `universal.md`; a compliance gap in provider-harness output, out of scope.
+- [#1049](https://github.com/HarperFast/ai-review-log/issues/1049) — a false positive on tracked-object spread behavior. Single PR, and the existing `GenericTrackedObject` caveat in `harper/common.md` ("verify against the specific tracked type rather than assuming either way") is already the correct instruction; the run didn't follow it. No edit.
+- [#993](https://github.com/HarperFast/ai-review-log/issues/993) (harper#1835) — a `.opened` self-clear-guard blocker that is plausible but bot-only, still unresolved, on an open draft. Real-looking, uncorroborated; no pattern.
+- [#1077](https://github.com/HarperFast/ai-review-log/issues/1077) (harper-pro#615) — drafted `useful`, corrected to `partial` mostly for **review staleness**: the only run covers the first spec, and the PR later gained `4e7b7ce1a` and `4b186a343` with no re-review. This is a trigger/harness concern, not addressable in prompt text — flagged here so it isn't mistaken for a prompt gap.
+
+### Prompt changes this week
+
+Three targeted edits, each backed by ≥2 independent points with peer or human corroboration:
+
+1. **`harper/common.md` → "Review checks specific to Harper": "Parity with a sibling call site is not proof of correctness."** New bullet covering the two sub-shapes — verify the callee's real signature on the *other* storage engine before mirroring an argument (lmdb-js `remove(key, ifVersionOrValue)` is positional, unlike `put()`), and enumerate the rest of the property set when propagating a flag onto a derived/mirrored object (UDS/mirror servers, cloned configs). Cites harper#1869 and harper#1858.
+2. **`universal.md` → Testing: defects confined to test code are Suggestions, not blockers**, and the four NEW-code categories are the *whole* list of missing-coverage blockers — with carve-outs for tests that validate nothing and for untested security-critical branches. Cites harper#1856 and harper#1860.
+3. **`universal.md` → "Before reviewing: read the prior conversation": re-read the threads immediately before you post.** Re-fetch `reviewThreads` right before commenting and reconcile anything that landed mid-trace. Cites ai-review-log#1017 and harper#1860.
+
+No `repo-type/*.md` edits: nothing this week was specific to a repo *type* (edit 1 is Harper-engine-specific, edits 2 and 3 are cross-repo reviewer discipline).
+
+Watch-list carried forward: the type-only-diff carve-out, still below the ≥2-independent bar ([#1050](https://github.com/HarperFast/ai-review-log/issues/1050), [#1040](https://github.com/HarperFast/ai-review-log/issues/1040), [#1011](https://github.com/HarperFast/ai-review-log/issues/1011)); "don't decline an open peer finding without adjudicating it" as a possible explicit rule if #73's deflation language keeps failing to bind ([#1060](https://github.com/HarperFast/ai-review-log/issues/1060), [#1091](https://github.com/HarperFast/ai-review-log/issues/1091), [#1083](https://github.com/HarperFast/ai-review-log/issues/1083)); review staleness on PRs that keep moving after a run ([#1077](https://github.com/HarperFast/ai-review-log/issues/1077)) — a harness concern, not prompt text; reviewer-tool config as an ignorable surface ([#1026](https://github.com/HarperFast/ai-review-log/issues/1026)); and an awaited call outside the recovery `try` ([#978](https://github.com/HarperFast/ai-review-log/issues/978)) — neither of the last two recurred. The concurrent-peer-review race is **off** the watch-list, promoted to edit 3.
+
+_(Open PRs at time of writing: [#81](https://github.com/HarperFast/ai-review-prompts/pull/81), which touches only `evals/*` — no overlap with these edits, and the natural future validator for them; and [#18](https://github.com/HarperFast/ai-review-prompts/pull/18), a workflow change, unrelated.)_
+
 ## Week of 2026-07-20
 
 Sources: raw verdict-labeled issues from [HarperFast/ai-review-log](https://github.com/HarperFast/ai-review-log) (pre-fetched, `closed_at` in `[2026-07-20, 2026-07-27)`). The curated `Calibration log` ([#1046](https://github.com/HarperFast/ai-review-log/issues/1046)) and `False-negative log` ([#1045](https://github.com/HarperFast/ai-review-log/issues/1045)) supplements exist for this week but carry only their boilerplate headers — no daily comments — so they contributed nothing. **45 `verdict:pending` issues remain open**, up from 13 a week ago: triage is falling behind ingest, so this week's mix is a partial read weighted toward whatever the batch reached.
