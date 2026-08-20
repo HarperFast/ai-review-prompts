@@ -35,6 +35,8 @@ repeatable while the draft PR supplies the live workflow check.
   head-unverified, or invalid classification
 - `log-review-to-ai-review-log.sh` and `post-review-comment.sh` — run binding,
   immutable metadata, title safety, and failure behavior via fixture CLIs
+- `find-prior-review-comment.sh` — marker continuity across paginated comment
+  results
 - `workflow-contract.test.sh` — static cross-file assertions that keep the
   prompts, reusable workflows, calibration prefetch, and logger aligned
 

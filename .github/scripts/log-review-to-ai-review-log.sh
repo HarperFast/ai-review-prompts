@@ -57,11 +57,10 @@
 #                           Default:
 #                           `repos/<owner>/<repo>/issues/<N>/comments`
 #                           (top-level issue comments — the Claude
-#                           legacy path). Set to
+#                           and Gemini shared-workflow path). Set to
 #                           `repos/<owner>/<repo>/pulls/<N>/reviews`
-#                           for the Gemini reviewer, which submits
-#                           via the GitHub Review API rather than
-#                           posting a top-level issue comment. Both
+#                           for a custom reviewer that submits via
+#                           the GitHub Review API. Both
 #                           endpoints return JSON arrays with
 #                           `body` / `updated_at` / `created_at`,
 #                           so the marker-startswith filter works
@@ -141,27 +140,32 @@ REVIEW_PREFIX=$(printf '%s\n%s\n' "$MARKER" "$RUN_MARKER")
 # fresh finding.
 JOB_STARTED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq '.run_started_at // empty')
 
-# Fetch the marker'd review surface via raw API. Two endpoints
-# are in use depending on the provider:
-#   * Default (Claude legacy): top-level issue comments
+# Fetch the marker'd review surface via raw API. Two endpoint
+# shapes are supported:
+#   * Default (shared Claude/Gemini): top-level issue comments
 #     (`/issues/<N>/comments`)
-#   * Gemini reviewer (MCP-based): pull request reviews
+#   * Custom Review-API callers: pull request reviews
 #     (`/pulls/<N>/reviews`)
 # Both return JSON arrays with `body` / `updated_at` / `created_at`,
 # so the marker-startswith filter is uniform. We can't use
 # `gh pr view --json comments` because it doesn't expose
 # `updated_at` (which we need below for the staleness guard).
 LOOKUP_API_PATH="${LOOKUP_API_PATH:-repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments}"
-REVIEW_JSON=$(gh api "$LOOKUP_API_PATH" \
-  | jq --arg prefix "$REVIEW_PREFIX" \
-    '[.[] | select((.body // "") | startswith($prefix))] | last // empty')
+if [[ "$LOOKUP_API_PATH" == *\?* ]]; then
+  LOOKUP_API_URL="${LOOKUP_API_PATH}&per_page=100"
+else
+  LOOKUP_API_URL="${LOOKUP_API_PATH}?per_page=100"
+fi
+REVIEW_JSON=$(gh api --paginate "$LOOKUP_API_URL" \
+  | jq -s --arg prefix "$REVIEW_PREFIX" \
+    '[.[][] | select((((.body // "") | gsub("\r\n"; "\n")) | startswith($prefix)))] | last // empty')
 
 if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
   echo "No review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH; skipping log."
   exit 0
 fi
 
-REVIEW_BODY=$(printf '%s' "$REVIEW_JSON" | jq -r '.body // empty')
+REVIEW_BODY=$(printf '%s' "$REVIEW_JSON" | jq -r '.body // empty' | sed -e 's/\r$//')
 # Prefer updated_at (top-level comments — reflects the most
 # recent edit) > submitted_at (PR reviews — set when the agent
 # calls submit_pending_pull_request_review) > created_at (issue-
@@ -218,6 +222,10 @@ case "$RUN_VALIDITY" in
   valid-current) TITLE="$TITLE_PREFIX $COUNT_PART" ;;
   valid-superseded) TITLE="$TITLE_PREFIX ${FINDING_COUNT} finding(s) — superseded by push" ;;
   valid-head-unverified) TITLE="$TITLE_PREFIX ${FINDING_COUNT} finding(s) — current head unverified" ;;
+  *)
+    echo "::warning::Unexpected run validity '$RUN_VALIDITY'; skipping log entry."
+    exit 0
+    ;;
 esac
 
 # Run URL — one click to the action run page where usage / cost
@@ -301,13 +309,18 @@ if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then
     "https://api.github.com/repos/HarperFast/ai-review-log/issues/$EXISTING_NUMBER/comments" \
     -d "$COMMENT_PAYLOAD")
 
-  PATCH_PAYLOAD=$(jq -nc --arg title "$TITLE" '{title: $title}')
-  HTTP_T=$(curl -sS -o /tmp/ai-log-patch-resp.json -w '%{http_code}' -X PATCH \
-    -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "https://api.github.com/repos/HarperFast/ai-review-log/issues/$EXISTING_NUMBER" \
-    -d "$PATCH_PAYLOAD")
+  HTTP_T=""
+  if [ "$RUN_VALIDITY" = "valid-current" ]; then
+    PATCH_PAYLOAD=$(jq -nc --arg title "$TITLE" '{title: $title}')
+    HTTP_T=$(curl -sS -o /tmp/ai-log-patch-resp.json -w '%{http_code}' -X PATCH \
+      -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "https://api.github.com/repos/HarperFast/ai-review-log/issues/$EXISTING_NUMBER" \
+      -d "$PATCH_PAYLOAD")
+  else
+    echo "Preserving the existing issue title for $RUN_VALIDITY evidence."
+  fi
 
   if [ "$HTTP_C" -ge 200 ] && [ "$HTTP_C" -lt 300 ]; then
     COMMENT_URL=$(jq -r '.html_url' /tmp/ai-log-comment-resp.json)
@@ -317,7 +330,7 @@ if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then
     cat /tmp/ai-log-comment-resp.json
   fi
 
-  if [ "$HTTP_T" -lt 200 ] || [ "$HTTP_T" -ge 300 ]; then
+  if [ -n "$HTTP_T" ] && { [ "$HTTP_T" -lt 200 ] || [ "$HTTP_T" -ge 300 ]; }; then
     echo "::warning::ai-review-log title PATCH failed (HTTP $HTTP_T):"
     cat /tmp/ai-log-patch-resp.json
   fi

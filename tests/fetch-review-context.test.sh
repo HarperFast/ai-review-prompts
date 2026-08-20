@@ -23,17 +23,26 @@ esac
 STUB
 chmod +x "$TMP/bin/gh"
 
+cat > "$TMP/bin/timeout" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$1" > "$STUB_TIMEOUT_CAPTURE"
+shift
+exec "$@"
+STUB
+chmod +x "$TMP/bin/timeout"
+
 run_fetch() {
-	STUB_MODE="$1" PATH="$TMP/bin:$PATH" GITHUB_REPOSITORY=HarperFast/harper PR_NUMBER=7 \
+	STUB_MODE="$1" STUB_TIMEOUT_CAPTURE="$TMP/timeout" PATH="$TMP/bin:$PATH" GITHUB_REPOSITORY=HarperFast/harper PR_NUMBER=7 \
 		bash "$SCRIPT" "$TMP/context.json" >/dev/null
 }
 
 run_fetch complete
 assert_eq "$(jq -r '.status' "$TMP/context.json")" "complete" "complete multi-page snapshot"
+assert_eq "$(<"$TMP/timeout")" "45" "GraphQL request uses the default API deadline"
 assert_eq "$(jq '.threads | length' "$TMP/context.json")" "2" "top-level thread pages are flattened"
 assert_eq "$(jq -r '.threads[1].comments.nodes[0].authorAssociation' "$TMP/context.json")" "MEMBER" "author association is preserved"
 
-PATH="$TMP/bin:$PATH" GITHUB_REPOSITORY='' PR_NUMBER='' \
+STUB_TIMEOUT_CAPTURE="$TMP/timeout" PATH="$TMP/bin:$PATH" GITHUB_REPOSITORY='' PR_NUMBER='' \
 	bash "$SCRIPT" "$TMP/context.json" 7 HarperFast/harper >/dev/null
 assert_eq "$(jq -r '.repository' "$TMP/context.json")" "HarperFast/harper" "explicit args support in-review refresh"
 

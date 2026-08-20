@@ -11,8 +11,9 @@
 # The top-level reviewThreads connection is fully paginated by gh. Thread
 # comments are capped at 100; the snapshot is marked partial, and each
 # affected thread carries commentsTruncated=true, if that cap is exceeded.
-# API and parse failures degrade to a status=unavailable snapshot and exit 0
-# so a GitHub outage does not block every consumer review.
+# On runners with GNU timeout, the API call is bounded to 45 seconds by
+# default (override with REVIEW_CONTEXT_TIMEOUT_SECONDS). API, timeout, and
+# parse failures degrade to a status=unavailable snapshot and exit 0.
 set -uo pipefail
 
 OUTPUT_FILE="${1:-}"
@@ -75,7 +76,6 @@ query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
               authorAssociation
               author { login }
             }
-            pageInfo { hasNextPage endCursor }
           }
         }
         pageInfo { hasNextPage endCursor }
@@ -84,11 +84,15 @@ query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
   }
 }'
 
-if ! RAW=$(gh api graphql --paginate --slurp \
+GH_COMMAND=(gh api graphql --paginate --slurp \
 	-f query="$QUERY" \
 	-F owner="$OWNER" \
 	-F name="$NAME" \
-	-F number="$PR_NUMBER"); then
+	-F number="$PR_NUMBER")
+if command -v timeout >/dev/null 2>&1; then
+	GH_COMMAND=(timeout "${REVIEW_CONTEXT_TIMEOUT_SECONDS:-45}" "${GH_COMMAND[@]}")
+fi
+if ! RAW=$("${GH_COMMAND[@]}"); then
 	write_unavailable "GraphQL request failed"
 	exit 0
 fi
@@ -103,8 +107,7 @@ if ! SNAPSHOT=$(printf '%s\n' "$RAW" | jq -ce \
     | ([ $prs[].reviewThreads.nodes[]? ]
        | map(. + {
            commentsTruncated: (
-             (.comments.pageInfo.hasNextPage // false)
-             or ((.comments.totalCount // 0) > ((.comments.nodes // []) | length))
+             (.comments.totalCount // 0) > ((.comments.nodes // []) | length)
            )
          })) as $threads
     | ([$threads[] | select(.commentsTruncated)] | length) as $truncated_count

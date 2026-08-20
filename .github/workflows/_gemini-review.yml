@@ -618,7 +618,7 @@ jobs:
           # Single-shot review. Capture the CLI's exit code but don't
           # abort here — we still want to parse output and surface the
           # streams for triage before propagating a failure.
-          gemini --yolo --prompt "$PROMPT" --output-format json >"$OUT" 2>"$ERR"; code=$?
+          gemini --yolo --include-directories "$RUNNER_TEMP" --prompt "$PROMPT" --output-format json >"$OUT" 2>"$ERR"; code=$?
           RESPONSE=""
           if jq -e . "$OUT" >/dev/null 2>&1; then
             RESPONSE="$(jq -r '.response // ""' "$OUT")"

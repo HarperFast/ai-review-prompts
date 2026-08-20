@@ -25,6 +25,12 @@ GITHUB_REPOSITORY=HarperFast/harper PR_NUMBER=7 bash "$SCRIPT" >/dev/null
 assert_contains "$(<"$TMP/call")" "pr comment 7" "bound response is posted"
 
 rm -f "$TMP/call"
+BODY=$(printf '%s\r\n%s\r\n%s\r\n' "$MARKER" "$RUN_MARKER" 'Reviewed; no blockers found.') \
+PATH="$TMP/bin:$PATH" STUB_CAPTURE="$TMP/call" MARKER="$MARKER" RUN_MARKER="$RUN_MARKER" \
+GITHUB_REPOSITORY=HarperFast/harper PR_NUMBER=7 bash "$SCRIPT" >/dev/null
+assert_contains "$(<"$TMP/call")" "pr comment 7" "CRLF-delimited bound response is normalized and posted"
+
+rm -f "$TMP/call"
 BODY="$MARKER
 <!-- ai-review-run:v1 run=other attempt=1 head=abc -->
 Reviewed; no blockers found." \

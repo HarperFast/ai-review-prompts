@@ -53,7 +53,8 @@ fi
 # marker check would refuse to post a perfectly valid review.
 TRIMMED=$(printf '%s' "$BODY" \
   | sed -e '1,/[^[:space:]]/{/^[[:space:]]*$/d;}' \
-  | sed -e '1s/^[[:space:]]*//')
+  | sed -e '1s/^[[:space:]]*//' \
+  | sed -e 's/\r$//')
 
 FIRST_LINE=$(printf '%s' "$TRIMMED" | head -1)
 SECOND_LINE=$(printf '%s' "$TRIMMED" | sed -n '2p')
