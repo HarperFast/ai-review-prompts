@@ -12,10 +12,12 @@ every PR (no `paths:` filter — so it can safely be a required check; see
 the workflow header). No framework / dependency — just bash + the
 `tests/lib.sh` assertion helpers.
 
-## Scope: pure logic only
+## Scope: deterministic and offline
 
-These cover scripts that are deterministic text/file transforms — no
-`gh`, no network, no mocking:
+Pure text/file transforms run directly. Scripts that orchestrate `gh` or
+`curl` run against small PATH-injected fixture binaries; tests never use the
+network or mutate GitHub state. This keeps pagination and failure branches
+repeatable while the draft PR supplies the live workflow check.
 
 - `compose-review-scope.sh` — layer files → composed scope
 - `parse-claude-mention.sh` — comment body → proceed / model decision
@@ -25,14 +27,20 @@ These cover scripts that are deterministic text/file transforms — no
 - `post-inline-comments.sh` — its pure helpers only (`badge_for`,
   `item_key`, `format_body`): severity badge, dedup key, comment-body
   shape. Sourced past its `BASH_SOURCE`-guarded `main`, so no network.
+- `fetch-review-context.sh` — paginated GraphQL pages → explicit complete,
+  partial, or unavailable thread snapshot
+- `fetch-curated-supplement.sh` — curated issue + all comment pages → weekly
+  calibration supplement
+- `classify-review-run.sh` — execution/head state → current, superseded,
+  head-unverified, or invalid classification
+- `log-review-to-ai-review-log.sh` and `post-review-comment.sh` — run binding,
+  immutable metadata, title safety, and failure behavior via fixture CLIs
+- `workflow-contract.test.sh` — static cross-file assertions that keep the
+  prompts, reusable workflows, calibration prefetch, and logger aligned
 
-The **gh-orchestration** scripts (`post-review-comment.sh`,
-`find-prior-review-comment.sh`, `log-review-to-ai-review-log.sh`, and the
-`main` of `post-inline-comments.sh`) are intentionally **not** unit-tested
-here — they're thin wrappers over `gh api` and are exercised end-to-end by
-the live review dogfood on every PR. If a pure, branch-y helper is
-extracted from one of them, add a test (as `post-inline-comments.sh`
-does for its formatting helpers).
+`find-prior-review-comment.sh` and the network-facing main path of
+`post-inline-comments.sh` remain covered by live review dogfood; their pure
+selection/formatting helpers are tested here where applicable.
 
 ## Adding a test
 

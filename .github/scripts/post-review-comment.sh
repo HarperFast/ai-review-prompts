@@ -18,6 +18,9 @@
 #                                `<!-- gemini-review:v1 -->`).
 #                                Defense against posting mystery
 #                                content if the model deviates.
+#   RUN_MARKER                 — required. Exact second-line marker
+#                                binding the body to run id, attempt,
+#                                and reviewed head.
 #   BODY                       — required. Agent's response text
 #                                (typically captured from the
 #                                action's `gemini_response` step
@@ -32,6 +35,10 @@ set -uo pipefail
 
 if [ -z "${MARKER:-}" ]; then
   echo "::error::MARKER env var is required."
+  exit 1
+fi
+if [ -z "${RUN_MARKER:-}" ]; then
+  echo "::error::RUN_MARKER env var is required."
   exit 1
 fi
 if [ -z "${BODY:-}" ]; then
@@ -49,14 +56,16 @@ TRIMMED=$(printf '%s' "$BODY" \
   | sed -e '1s/^[[:space:]]*//')
 
 FIRST_LINE=$(printf '%s' "$TRIMMED" | head -1)
-case "$FIRST_LINE" in
-  "$MARKER"*) ;;
-  *)
+SECOND_LINE=$(printf '%s' "$TRIMMED" | sed -n '2p')
+if [ "$FIRST_LINE" != "$MARKER" ]; then
     echo "::warning::Agent response did not start with marker ('$MARKER'); refusing to post mystery content. First line was:"
     printf '  %s\n' "$FIRST_LINE"
     exit 0
-    ;;
-esac
+fi
+if [ "$SECOND_LINE" != "$RUN_MARKER" ]; then
+  echo "::warning::Agent response did not carry this run's binding marker on line 2; refusing to post unbound content."
+  exit 0
+fi
 
 # Use --body-file / -F body=@<file> to dodge shell-arg-length
 # limits for large reviews.

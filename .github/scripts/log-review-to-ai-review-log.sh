@@ -75,10 +75,15 @@
 #   PR_URL                — html URL of the PR
 #   REVIEW_STATUS         — outcome of the review step
 #                           (success / failure / cancelled / etc.)
+#   BASE_SHA              — base commit from the pull_request event
+#   REVIEWED_HEAD_SHA     — head commit checked out for this review
 #   REPO_SHORT            — short repo name (e.g. "harper")
 #   GITHUB_REPOSITORY     — owner/repo of the PR's repo
 #   GITHUB_RUN_ID         — current Actions run ID (for staleness
 #                           guard)
+#   GITHUB_RUN_ATTEMPT    — current Actions attempt number
+#   REVIEW_CONTEXT_FILE   — optional ai-review-context/v1 snapshot;
+#                           its status is recorded with the run
 #   RUNNER_TEMP           — runner temp dir (where the agent's
 #                           optional run-notes file lives)
 set -uo pipefail
@@ -100,6 +105,36 @@ if [ -z "${AI_REVIEW_LOG_TOKEN:-}" ]; then
   exit 0
 fi
 
+RUN_ID="${GITHUB_RUN_ID:-}"
+RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}"
+REVIEWED_HEAD_SHA="${REVIEWED_HEAD_SHA:-}"
+BASE_SHA="${BASE_SHA:-unknown}"
+
+CURRENT_HEAD_SHA=""
+HEAD_FETCH_STATUS="failure"
+if [ "${REVIEW_STATUS:-}" = "success" ]; then
+  if CURRENT_HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) \
+    && [ -n "$CURRENT_HEAD_SHA" ]; then
+    HEAD_FETCH_STATUS="success"
+  fi
+fi
+RUN_VALIDITY=$(bash "$(dirname "$0")/classify-review-run.sh" \
+  "${REVIEW_STATUS:-}" "$REVIEWED_HEAD_SHA" "$CURRENT_HEAD_SHA" "$HEAD_FETCH_STATUS")
+case "$RUN_VALIDITY" in
+  invalid-*)
+    echo "::warning::Review attempt run=${RUN_ID:-unknown} attempt=${RUN_ATTEMPT:-unknown} is $RUN_VALIDITY (review_status=${REVIEW_STATUS:-unknown}); not logging its body as a verdict."
+    exit 0
+    ;;
+esac
+
+if [ -z "$RUN_ID" ] || [ -z "$RUN_ATTEMPT" ]; then
+  echo "::warning::Run ID or attempt is missing; refusing to create an unbound review record."
+  exit 0
+fi
+
+RUN_MARKER="<!-- ai-review-run:v1 run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA -->"
+REVIEW_PREFIX=$(printf '%s\n%s\n' "$MARKER" "$RUN_MARKER")
+
 # When this workflow job started. Used to filter out stale review
 # comments from previous runs so a cancelled in-flight run (e.g.
 # from a force-push) doesn't re-log a prior run's content as a
@@ -118,11 +153,11 @@ JOB_STARTED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" 
 # `updated_at` (which we need below for the staleness guard).
 LOOKUP_API_PATH="${LOOKUP_API_PATH:-repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments}"
 REVIEW_JSON=$(gh api "$LOOKUP_API_PATH" \
-  | jq --arg marker "$MARKER" \
-    '[.[] | select((.body // "") | startswith($marker))] | last // empty')
+  | jq --arg prefix "$REVIEW_PREFIX" \
+    '[.[] | select((.body // "") | startswith($prefix))] | last // empty')
 
 if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
-  echo "No marker'd review surface ($MARKER) found at $LOOKUP_API_PATH (review_status=$REVIEW_STATUS); skipping log."
+  echo "No review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH; skipping log."
   exit 0
 fi
 
@@ -179,16 +214,21 @@ else
   TITLE_PREFIX="[$REPO_SHORT] PR #$PR_NUMBER:"
 fi
 
-if [ "$REVIEW_STATUS" = "success" ]; then
-  TITLE="$TITLE_PREFIX $COUNT_PART"
-else
-  TITLE="$TITLE_PREFIX $COUNT_PART (review $REVIEW_STATUS — may be incomplete)"
-fi
+case "$RUN_VALIDITY" in
+  valid-current) TITLE="$TITLE_PREFIX $COUNT_PART" ;;
+  valid-superseded) TITLE="$TITLE_PREFIX ${FINDING_COUNT} finding(s) — superseded by push" ;;
+  valid-head-unverified) TITLE="$TITLE_PREFIX ${FINDING_COUNT} finding(s) — current head unverified" ;;
+esac
 
 # Run URL — one click to the action run page where usage / cost
 # data is shown (token counts, estimated $). Useful for both
 # providers; included unconditionally.
 RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+CURRENT_HEAD_FIELD="${CURRENT_HEAD_SHA:-unknown}"
+REVIEW_CONTEXT_STATUS="unknown"
+if [ -n "${REVIEW_CONTEXT_FILE:-}" ] && [ -f "$REVIEW_CONTEXT_FILE" ]; then
+  REVIEW_CONTEXT_STATUS=$(jq -r '.status // "unknown"' "$REVIEW_CONTEXT_FILE" 2>/dev/null || printf 'unknown')
+fi
 
 # ai-review-prompts ref this run reviewed under (passed by the reusable
 # workflow's log step as AI_REVIEW_PROMPTS_REF). Recorded in the body so
@@ -212,11 +252,11 @@ ISSUE_NUMBER=""
 if [ -n "$PROVIDER_LABEL" ]; then
   PEERS_QUERY=$(printf '%s' "[$REPO_SHORT] PR #$PR_NUMBER" | jq -sRr @uri)
   PEERS_URL="https://github.com/HarperFast/ai-review-log/issues?q=is%3Aissue+${PEERS_QUERY}"
-  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Provider:** %s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Peers:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Date:** %s\n\n---\n\n%s\n' \
-    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$PROVIDER_LABEL" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$PEERS_URL" "$REVIEW_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
+  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Provider:** %s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Peers:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Run ID:** %s\n**Run attempt:** %s\n**Base SHA:** %s\n**Reviewed head:** %s\n**Current head:** %s\n**Run validity:** %s\n**Review context:** %s\n**Date:** %s\n\n---\n\n%s\n' \
+    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$PROVIDER_LABEL" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$PEERS_URL" "$REVIEW_STATUS" "$RUN_ID" "$RUN_ATTEMPT" "$BASE_SHA" "$REVIEWED_HEAD_SHA" "$CURRENT_HEAD_FIELD" "$RUN_VALIDITY" "$REVIEW_CONTEXT_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
 else
-  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Date:** %s\n\n---\n\n%s\n' \
-    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$REVIEW_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
+  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Run ID:** %s\n**Run attempt:** %s\n**Base SHA:** %s\n**Reviewed head:** %s\n**Current head:** %s\n**Run validity:** %s\n**Review context:** %s\n**Date:** %s\n\n---\n\n%s\n' \
+    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$REVIEW_STATUS" "$RUN_ID" "$RUN_ATTEMPT" "$BASE_SHA" "$REVIEWED_HEAD_SHA" "$CURRENT_HEAD_FIELD" "$RUN_VALIDITY" "$REVIEW_CONTEXT_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
 fi
 
 # Structured run notes from the agent (optional). This is the
