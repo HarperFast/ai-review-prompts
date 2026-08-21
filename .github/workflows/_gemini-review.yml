@@ -75,6 +75,10 @@ on:
         description: 'Job-level timeout for the review job.'
         type: number
         default: 15
+      expected-review-author:
+        description: 'GitHub login that owns Gemini review comments. Override only when the caller deliberately posts through another token.'
+        type: string
+        default: 'github-actions[bot]'
       skills-ref:
         description: 'SHA pin for HarperFast/skills (referenced when a layer points into harper-best-practices/). Same default as _claude-review.yml; bump together.'
         type: string
@@ -262,7 +266,7 @@ jobs:
           # sentinel. The marker is what discriminates between
           # providers' comments on the same PR.
           MARKER: '<!-- gemini-review:v1 -->'
-          EXPECTED_REVIEW_AUTHOR: github-actions[bot]
+          EXPECTED_REVIEW_AUTHOR: ${{ inputs.expected-review-author }}
         run: bash .ai-review-prompts/.github/scripts/find-prior-review-comment.sh
 
       - name: Fetch prior review body (for continuity)
@@ -741,7 +745,7 @@ jobs:
           REVIEWED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           REVIEW_CONTEXT_FILE: ${{ runner.temp }}/ai-review-context.json
-          EXPECTED_REVIEW_AUTHOR: github-actions[bot]
+          EXPECTED_REVIEW_AUTHOR: ${{ inputs.expected-review-author }}
           FAIL_ON_UNBOUND: true
           REPO_SHORT: ${{ github.event.repository.name }}
           MARKER: '<!-- gemini-review:v1 -->'

@@ -30,8 +30,10 @@ assert_contains "$LOGGER" 'gh api --method GET search/issues' "old log issues us
 assert_contains "$LOGGER" "::error::No bot-authored review surface bound" "strict unbound review evidence fails visibly"
 assert_contains "$CLAUDE" "FAIL_ON_UNBOUND: true" "Claude cannot succeed without a bound review surface"
 assert_contains "$GEMINI" "FAIL_ON_UNBOUND: true" "Gemini cannot succeed without a bound review surface"
-assert_contains "$CLAUDE" "EXPECTED_REVIEW_AUTHOR: claude[bot]" "Claude review surfaces are pinned to the live bot identity"
-assert_contains "$GEMINI" "EXPECTED_REVIEW_AUTHOR: github-actions[bot]" "Gemini review surfaces are pinned to the Actions bot identity"
+assert_contains "$CLAUDE" "default: 'claude[bot]'" "Claude defaults to the live-verified bot identity"
+assert_contains "$GEMINI" "default: 'github-actions[bot]'" "Gemini defaults to the Actions bot identity"
+assert_contains "$CLAUDE" 'EXPECTED_REVIEW_AUTHOR: ${{ inputs.expected-review-author }}' "Claude review identity is caller-configurable"
+assert_contains "$GEMINI" 'EXPECTED_REVIEW_AUTHOR: ${{ inputs.expected-review-author }}' "Gemini review identity is caller-configurable"
 assert_contains "$PRIOR_LOOKUP" 'gh api --paginate "$API_URL"' "prior-review continuity lookup covers every comment page"
 
 t_summary

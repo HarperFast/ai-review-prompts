@@ -153,7 +153,11 @@ if [[ "$LOOKUP_API_PATH" == *\?* ]]; then
 else
   LOOKUP_API_URL="${LOOKUP_API_PATH}?per_page=100"
 fi
-REVIEW_JSON=$(gh api --paginate "$LOOKUP_API_URL" \
+if ! REVIEW_PAGES=$(gh api --paginate "$LOOKUP_API_URL"); then
+  echo "::warning::Could not verify this run's review surface because the GitHub comments API failed; leaving the posted review intact and skipping logging."
+  exit 0
+fi
+if ! REVIEW_JSON=$(printf '%s\n' "$REVIEW_PAGES" \
   | jq -s --arg marker "$MARKER" --arg run_marker "$RUN_MARKER" --arg expected_author "$EXPECTED_REVIEW_AUTHOR" '
     def rtrim_marker: sub("[ \t]+$"; "");
     [.[][]
@@ -164,10 +168,19 @@ REVIEW_JSON=$(gh api --paginate "$LOOKUP_API_URL" \
           and (($lines[0] | rtrim_marker) == $marker)
           and (($lines[1] | rtrim_marker) == $run_marker))
         )
-    ] | last // empty')
+    ] | last // empty'); then
+  echo "::warning::Could not parse the GitHub review surfaces; leaving the posted review intact and skipping logging."
+  exit 0
+fi
 
 if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
   if [ "${FAIL_ON_UNBOUND:-false}" = "true" ]; then
+    UNBOUND_CURRENT_HEAD=""
+    if UNBOUND_CURRENT_HEAD=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) \
+      && [ -n "$UNBOUND_CURRENT_HEAD" ] && [ "$UNBOUND_CURRENT_HEAD" != "$REVIEWED_HEAD_SHA" ]; then
+      echo "::notice::This run's shared review surface was replaced after a newer push; skipping superseded evidence without failing the current PR."
+      exit 0
+    fi
     echo "::error::No bot-authored review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH."
     exit 1
   fi
@@ -309,20 +322,31 @@ fi
 # page is a fallback for a just-created issue not indexed by search yet.
 SEARCH_QUERY="repo:HarperFast/ai-review-log is:issue in:title label:\"repo:$REPO_SHORT\" \"$TITLE_PREFIX\""
 SEARCH_JSON=""
+SEARCH_FAILED=false
 if ! SEARCH_JSON=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api --method GET search/issues \
   -f q="$SEARCH_QUERY" -f per_page=100 2>/dev/null); then
-  echo "::warning::Indexed ai-review-log lookup failed; checking only the recent issue page."
+  SEARCH_FAILED=true
+  echo "::warning::Indexed ai-review-log lookup failed; falling back to the complete labeled issue history."
 fi
 EXISTING_NUMBER=$(printf '%s' "$SEARCH_JSON" | jq -r --arg prefix "$TITLE_PREFIX" \
   '[.items[]? | select(.title | startswith($prefix))] | first | .number // empty' 2>/dev/null)
 if [ -z "$EXISTING_NUMBER" ]; then
-  if ! RECENT_ISSUES=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api \
-    "repos/HarperFast/ai-review-log/issues?labels=repo:$REPO_SHORT&state=all&per_page=100&sort=created&direction=desc" 2>/dev/null); then
-    echo "::warning::Recent ai-review-log lookup failed; refusing to create a possible duplicate."
-    exit 0
+  ISSUE_LIST_URL="repos/HarperFast/ai-review-log/issues?labels=repo:$REPO_SHORT&state=all&per_page=100&sort=created&direction=desc"
+  if [ "$SEARCH_FAILED" = "true" ]; then
+    if ! EXISTING_NUMBER=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api --paginate "$ISSUE_LIST_URL" 2>/dev/null \
+      | jq -sr --arg prefix "$TITLE_PREFIX" \
+        '[.[][] | select(.title | startswith($prefix))] | first | .number // empty'); then
+      echo "::warning::Fallback ai-review-log lookup failed; refusing to create a possible duplicate."
+      exit 0
+    fi
+  else
+    if ! RECENT_ISSUES=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api "$ISSUE_LIST_URL" 2>/dev/null); then
+      echo "::warning::Recent ai-review-log lookup failed; refusing to create a possible duplicate."
+      exit 0
+    fi
+    EXISTING_NUMBER=$(printf '%s' "$RECENT_ISSUES" | jq -r --arg prefix "$TITLE_PREFIX" \
+      '[.[]? | select(.title | startswith($prefix))] | first | .number // empty' 2>/dev/null)
   fi
-  EXISTING_NUMBER=$(printf '%s' "$RECENT_ISSUES" | jq -r --arg prefix "$TITLE_PREFIX" \
-    '[.[]? | select(.title | startswith($prefix))] | first | .number // empty' 2>/dev/null)
 fi
 
 if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then

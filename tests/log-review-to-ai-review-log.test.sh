@@ -17,6 +17,7 @@ elif [[ "$ARGS" == *"/pulls/7 --jq"* ]]; then
 	printf '%s\n' "$STUB_CURRENT_HEAD"
 elif [[ "$ARGS" == *"search/issues"* ]]; then
 	if [ "${STUB_LOOKUP_FAILURE:-0}" = "1" ]; then exit 1; fi
+	if [ "${STUB_SEARCH_FAILURE:-0}" = "1" ]; then exit 1; fi
 	if [ "${STUB_EXISTING_ISSUE:-0}" = "1" ]; then
 		printf '%s\n' '{"items":[{"title":"[harper] PR #7: no blockers","number":42}]}'
 	else
@@ -24,8 +25,14 @@ elif [[ "$ARGS" == *"search/issues"* ]]; then
 	fi
 elif [[ "$ARGS" == *"repos/HarperFast/ai-review-log/issues?"* ]]; then
 	if [ "${STUB_LOOKUP_FAILURE:-0}" = "1" ]; then exit 1; fi
-	printf '%s\n' '[]'
+	if [ "${STUB_SEARCH_FAILURE:-0}" = "1" ] && [ "${STUB_EXISTING_ISSUE:-0}" = "1" ]; then
+		printf '%s\n' '[]'
+		printf '%s\n' '[{"title":"[harper] PR #7: no blockers","number":42}]'
+	else
+		printf '%s\n' '[]'
+	fi
 elif [[ "$ARGS" == *"/issues/7/comments"* ]]; then
+	if [ "${STUB_COMMENT_FAILURE:-0}" = "1" ]; then exit 1; fi
 	if [ "${STUB_CRLF:-0}" = "1" ]; then
 		CORRECT=$(printf '%s\r\n%s\r\n%s' "$STUB_MARKER" "$STUB_RUN_MARKER" "$STUB_REVIEW_TEXT")
 	elif [ "${STUB_CRLF:-0}" = "2" ]; then
@@ -95,6 +102,8 @@ run_logger() {
 	STUB_UNBOUND="${5:-0}" \
 	FAIL_ON_UNBOUND="${6:-false}" \
 	STUB_LOOKUP_FAILURE="${7:-0}" \
+	STUB_COMMENT_FAILURE="${8:-0}" \
+	STUB_SEARCH_FAILURE="${9:-0}" \
 	STUB_MARKER="$MARKER" \
 	STUB_RUN_MARKER="$RUN_MARKER" \
 	STUB_REVIEW_TEXT='Reviewed; no blockers found.' \
@@ -152,9 +161,19 @@ assert_status "$?" 0 "unbound review remains best-effort by default"
 run_logger abc success 0 0 1 true
 assert_status "$?" 1 "strict unbound review fails the workflow visibly"
 
+run_logger def success 0 0 1 true
+assert_status "$?" 0 "overwritten superseded surface does not fail the current PR"
+
+run_logger abc success 0 0 0 true 0 1
+assert_status "$?" 0 "comment API outage is not mislabeled as an unbound review"
+
 run_logger abc success 0 0 0 false 1
 assert_status "$?" 0 "log lookup outage remains best-effort"
 if [ -e "$TMP/payload.json" ]; then t_bad "lookup outage cannot create a possible duplicate"; else t_ok "lookup outage cannot create a possible duplicate"; fi
+
+run_logger def success 1 0 0 false 0 0 1
+assert_status "$?" 0 "search capability failure falls back to complete pagination"
+assert_contains "$(<"$TMP/curl.log")" "POST https://api.github.com/repos/HarperFast/ai-review-log/issues/42/comments" "paginated fallback finds an old issue"
 
 run_logger abc failure
 assert_status "$?" 0 "failed review skip remains best-effort"

@@ -28,6 +28,16 @@ write_unavailable() {
 		.schema == "ai-review-context/v1"
 		and (.status == "complete" or .status == "partial")
 	' "$OUTPUT_FILE" >/dev/null 2>&1; then
+		local failed_at warning temp_file
+		failed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+		warning="refresh failed at $failed_at: $reason; retained the prior snapshot"
+		temp_file="${OUTPUT_FILE}.refresh.$$"
+		if jq --arg warning "$warning" '.warnings = ((.warnings // []) + [$warning])' \
+			"$OUTPUT_FILE" > "$temp_file"; then
+			mv "$temp_file" "$OUTPUT_FILE"
+		else
+			rm -f "$temp_file"
+		fi
 		echo "::warning::Review-thread context refresh failed; retaining the previous usable snapshot: $reason"
 		return
 	fi

@@ -51,8 +51,11 @@ assert_eq "$(jq -r '.status' "$TMP/context.json")" "partial" "nested comment tru
 assert_eq "$(jq -r '.threads[0].commentsTruncated' "$TMP/context.json")" "true" "truncated thread is explicit"
 assert_contains "$(jq -r '.warnings[]' "$TMP/context.json")" "100-comment" "truncation warning explains the cap"
 
+FETCHED_AT=$(jq -r '.fetchedAt' "$TMP/context.json")
 run_fetch failure
 assert_eq "$(jq -r '.status' "$TMP/context.json")" "partial" "failed refresh preserves the previous usable snapshot"
+assert_eq "$(jq -r '.fetchedAt' "$TMP/context.json")" "$FETCHED_AT" "retained snapshot keeps its actual fetch time"
+assert_contains "$(jq -r '.warnings[]' "$TMP/context.json")" "refresh failed at" "retained snapshot records the failed refresh"
 
 rm -f "$TMP/context.json"
 run_fetch failure

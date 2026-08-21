@@ -67,6 +67,10 @@ on:
         description: 'Job-level timeout for the review job. Headroom over the agent step; not the cost ceiling (max-turns is).'
         type: number
         default: 15
+      expected-review-author:
+        description: 'GitHub login that owns Claude review comments. Defaults to the live-verified Claude App identity; override if a caller deliberately posts through another token.'
+        type: string
+        default: 'claude[bot]'
       skills-ref:
         description: 'SHA pin for HarperFast/skills (referenced when a layer points into harper-best-practices/).'
         type: string
@@ -249,7 +253,7 @@ jobs:
           # responses, manual comments). Matches the marker the
           # agent writes via the prompt's "How to post" section.
           MARKER: '<!-- claude-review:v1 -->'
-          EXPECTED_REVIEW_AUTHOR: claude[bot]
+          EXPECTED_REVIEW_AUTHOR: ${{ inputs.expected-review-author }}
         run: bash .ai-review-prompts/.github/scripts/find-prior-review-comment.sh
 
       - name: Claude review
@@ -606,7 +610,7 @@ jobs:
           REVIEWED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           REVIEW_CONTEXT_FILE: ${{ runner.temp }}/ai-review-context.json
-          EXPECTED_REVIEW_AUTHOR: claude[bot]
+          EXPECTED_REVIEW_AUTHOR: ${{ inputs.expected-review-author }}
           FAIL_ON_UNBOUND: true
           REPO_SHORT: ${{ github.event.repository.name }}
           MARKER: '<!-- claude-review:v1 -->'
