@@ -30,7 +30,7 @@ if ! ISSUES=$(printf '%s\n' "$RAW_ISSUES" | jq -sce --arg week "$WEEK" '
 	exit 0
 fi
 
-RESULT='[]'
+RESULT_ITEMS=()
 while IFS= read -r ISSUE; do
 	NUMBER=$(printf '%s' "$ISSUE" | jq -r '.number')
 	if RAW_COMMENTS=$(gh api --paginate \
@@ -53,7 +53,11 @@ while IFS= read -r ISSUE; do
 		echo "::warning::Comments fetch failed for ai-review-log#$NUMBER"
 	fi
 	ENRICHED=$(printf '%s' "$ISSUE" | jq -c --argjson comments "$COMMENTS" '. + {comments: $comments}')
-	RESULT=$(printf '%s' "$RESULT" | jq -c --argjson issue "$ENRICHED" '. + [$issue]')
+	RESULT_ITEMS+=("$ENRICHED")
 done < <(printf '%s' "$ISSUES" | jq -c '.[]')
 
-printf '%s\n' "$RESULT" > "$OUTPUT_FILE"
+if [ "${#RESULT_ITEMS[@]}" -eq 0 ]; then
+	printf '%s\n' '[]' > "$OUTPUT_FILE"
+else
+	printf '%s\n' "${RESULT_ITEMS[@]}" | jq -s '.' > "$OUTPUT_FILE"
+fi
