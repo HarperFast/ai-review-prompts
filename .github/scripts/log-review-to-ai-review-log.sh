@@ -176,9 +176,13 @@ fi
 if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
   if [ "${FAIL_ON_UNBOUND:-false}" = "true" ]; then
     UNBOUND_CURRENT_HEAD=""
-    if UNBOUND_CURRENT_HEAD=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) \
-      && [ -n "$UNBOUND_CURRENT_HEAD" ] && [ "$UNBOUND_CURRENT_HEAD" != "$REVIEWED_HEAD_SHA" ]; then
-      echo "::notice::This run's shared review surface was replaced after a newer push; skipping superseded evidence without failing the current PR."
+    if ! UNBOUND_CURRENT_HEAD=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) \
+      || [ -z "$UNBOUND_CURRENT_HEAD" ]; then
+      echo "::warning::Could not re-check the PR head while diagnosing an unbound review surface; skipping logging without turning a GitHub API blip into a review failure."
+      exit 0
+    fi
+    if [ "$UNBOUND_CURRENT_HEAD" != "$REVIEWED_HEAD_SHA" ]; then
+      echo "::notice::A newer push exists, so this run's shared review surface may have been replaced or never posted; skipping superseded evidence without failing the current PR."
       exit 0
     fi
     echo "::error::No bot-authored review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH."

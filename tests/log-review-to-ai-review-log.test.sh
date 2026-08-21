@@ -164,6 +164,9 @@ assert_status "$?" 1 "strict unbound review fails the workflow visibly"
 run_logger def success 0 0 1 true
 assert_status "$?" 0 "overwritten superseded surface does not fail the current PR"
 
+run_logger '' success 0 0 1 true
+assert_status "$?" 0 "head re-check outage does not turn an unbound surface into a false red"
+
 run_logger abc success 0 0 0 true 0 1
 assert_status "$?" 0 "comment API outage is not mislabeled as an unbound review"
 
