@@ -70,14 +70,14 @@ FIRST_LINE=$(printf '%s' "$TRIMMED" | head -1)
 SECOND_LINE=$(printf '%s' "$TRIMMED" | sed -n '2p')
 if [ "$FIRST_LINE" != "$MARKER" ]; then
     set_posted false
-    echo "::warning::Agent response did not start with marker ('$MARKER'); refusing to post mystery content. First line was:"
+    echo "::error::Agent response did not start with marker ('$MARKER'); refusing to post mystery content. First line was:"
     printf '  %s\n' "$FIRST_LINE"
-    exit 0
+    exit 1
 fi
 if [ "$SECOND_LINE" != "$RUN_MARKER" ]; then
   set_posted false
-  echo "::warning::Agent response did not carry this run's binding marker on line 2; refusing to post unbound content."
-  exit 0
+  echo "::error::Agent response did not carry this run's binding marker on line 2; refusing to post unbound content."
+  exit 1
 fi
 
 # Use --body-file / -F body=@<file> to dodge shell-arg-length

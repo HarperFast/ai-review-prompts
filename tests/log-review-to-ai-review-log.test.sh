@@ -15,16 +15,21 @@ if [[ "$ARGS" == *"/actions/runs/"* ]]; then
 	printf '%s\n' '2026-08-20T10:00:00Z'
 elif [[ "$ARGS" == *"/pulls/7 --jq"* ]]; then
 	printf '%s\n' "$STUB_CURRENT_HEAD"
-elif [[ "$ARGS" == *"repos/HarperFast/ai-review-log/issues?"* ]]; then
-	printf '%s\n' '[]'
+elif [[ "$ARGS" == *"search/issues"* ]]; then
+	if [ "${STUB_LOOKUP_FAILURE:-0}" = "1" ]; then exit 1; fi
 	if [ "${STUB_EXISTING_ISSUE:-0}" = "1" ]; then
-		printf '%s\n' '[{"title":"[harper] PR #7: no blockers","number":42}]'
+		printf '%s\n' '{"items":[{"title":"[harper] PR #7: no blockers","number":42}]}'
 	else
-		printf '%s\n' '[]'
+		printf '%s\n' '{"items":[]}'
 	fi
+elif [[ "$ARGS" == *"repos/HarperFast/ai-review-log/issues?"* ]]; then
+	if [ "${STUB_LOOKUP_FAILURE:-0}" = "1" ]; then exit 1; fi
+	printf '%s\n' '[]'
 elif [[ "$ARGS" == *"/issues/7/comments"* ]]; then
 	if [ "${STUB_CRLF:-0}" = "1" ]; then
 		CORRECT=$(printf '%s\r\n%s\r\n%s' "$STUB_MARKER" "$STUB_RUN_MARKER" "$STUB_REVIEW_TEXT")
+	elif [ "${STUB_CRLF:-0}" = "2" ]; then
+		CORRECT=$(printf '%s  \n%s\t\n%s' "$STUB_MARKER" "$STUB_RUN_MARKER" "$STUB_REVIEW_TEXT")
 	else
 		CORRECT="${STUB_MARKER}
 ${STUB_RUN_MARKER}
@@ -33,8 +38,11 @@ ${STUB_REVIEW_TEXT}"
 	WRONG="${STUB_MARKER}
 <!-- ai-review-run:v1 run=999 attempt=1 head=abc -->
 wrong concurrent body"
-	jq -nc --arg wrong "$WRONG" '[{body:$wrong, updated_at:"2026-08-20T10:02:00Z", created_at:"2026-08-20T10:02:00Z"}]'
-	jq -nc --arg correct "$CORRECT" '[{body:$correct, updated_at:"2026-08-20T10:01:00Z", created_at:"2026-08-20T10:01:00Z"}]'
+	jq -nc --arg wrong "$WRONG" '[{body:$wrong, user:{login:"github-actions[bot]"}, updated_at:"2026-08-20T10:02:00Z", created_at:"2026-08-20T10:02:00Z"}]'
+	if [ "${STUB_UNBOUND:-0}" != "1" ]; then
+		jq -nc --arg correct "$CORRECT" '[{body:$correct, user:{login:"github-actions[bot]"}, updated_at:"2026-08-20T10:01:00Z", created_at:"2026-08-20T10:01:00Z"}]'
+		jq -nc --arg correct "$CORRECT" '[{body:($correct + "\\nmalicious injected verdict"), user:{login:"attacker"}, updated_at:"2026-08-20T10:03:00Z", created_at:"2026-08-20T10:03:00Z"}]'
+	fi
 else
 	exit 1
 fi
@@ -84,6 +92,9 @@ run_logger() {
 	STUB_CURRENT_HEAD="$1" \
 	STUB_EXISTING_ISSUE="${3:-0}" \
 	STUB_CRLF="${4:-0}" \
+	STUB_UNBOUND="${5:-0}" \
+	FAIL_ON_UNBOUND="${6:-false}" \
+	STUB_LOOKUP_FAILURE="${7:-0}" \
 	STUB_MARKER="$MARKER" \
 	STUB_RUN_MARKER="$RUN_MARKER" \
 	STUB_REVIEW_TEXT='Reviewed; no blockers found.' \
@@ -106,6 +117,7 @@ assert_contains "$(printf '%s' "$PAYLOAD" | jq -r '.body')" "**Reviewed head:** 
 assert_contains "$(printf '%s' "$PAYLOAD" | jq -r '.body')" "**Run validity:** valid-current" "current-head validity is recorded"
 assert_contains "$(printf '%s' "$PAYLOAD" | jq -r '.body')" "**Review context:** partial" "snapshot completeness is recorded"
 assert_not_contains "$(printf '%s' "$PAYLOAD" | jq -r '.body')" "wrong concurrent body" "body is selected by exact run binding"
+assert_not_contains "$(printf '%s' "$PAYLOAD" | jq -r '.body')" "malicious injected verdict" "run-bound body must be bot-authored"
 
 run_logger def success
 assert_status "$?" 0 "superseded run logger remains best-effort"
@@ -125,10 +137,24 @@ assert_status "$?" 0 "CRLF-bound review remains loggable"
 PAYLOAD=$(<"$TMP/payload.json")
 assert_eq "$(printf '%s' "$PAYLOAD" | jq -r '.title')" "[harper] PR #7: no blockers" "CRLF marker lines are normalized before binding"
 
+run_logger abc success 0 2
+assert_status "$?" 0 "Claude-style marker trailing whitespace remains loggable"
+PAYLOAD=$(<"$TMP/payload.json")
+assert_eq "$(printf '%s' "$PAYLOAD" | jq -r '.title')" "[harper] PR #7: no blockers" "logger normalizes trailing marker whitespace"
+
 run_logger def success 1
 assert_status "$?" 0 "superseded existing-issue logger remains best-effort"
 assert_not_contains "$(<"$TMP/curl.log")" "PATCH https://api.github.com/repos/HarperFast/ai-review-log/issues/42" "superseded run cannot overwrite a current issue title"
-assert_contains "$(<"$TMP/curl.log")" "POST https://api.github.com/repos/HarperFast/ai-review-log/issues/42/comments" "existing issue lookup covers later API pages"
+assert_contains "$(<"$TMP/curl.log")" "POST https://api.github.com/repos/HarperFast/ai-review-log/issues/42/comments" "indexed lookup finds an older existing issue"
+
+run_logger abc success 0 0 1
+assert_status "$?" 0 "unbound review remains best-effort by default"
+run_logger abc success 0 0 1 true
+assert_status "$?" 1 "strict unbound review fails the workflow visibly"
+
+run_logger abc success 0 0 0 false 1
+assert_status "$?" 0 "log lookup outage remains best-effort"
+if [ -e "$TMP/payload.json" ]; then t_bad "lookup outage cannot create a possible duplicate"; else t_ok "lookup outage cannot create a possible duplicate"; fi
 
 run_logger abc failure
 assert_status "$?" 0 "failed review skip remains best-effort"

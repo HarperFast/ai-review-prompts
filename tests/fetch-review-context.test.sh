@@ -52,8 +52,13 @@ assert_eq "$(jq -r '.threads[0].commentsTruncated' "$TMP/context.json")" "true" 
 assert_contains "$(jq -r '.warnings[]' "$TMP/context.json")" "100-comment" "truncation warning explains the cap"
 
 run_fetch failure
+assert_eq "$(jq -r '.status' "$TMP/context.json")" "partial" "failed refresh preserves the previous usable snapshot"
+
+rm -f "$TMP/context.json"
+run_fetch failure
 assert_eq "$(jq -r '.status' "$TMP/context.json")" "unavailable" "GraphQL failure degrades without failing review"
 assert_eq "$(jq '.threads | length' "$TMP/context.json")" "0" "unavailable snapshot has no invented threads"
+assert_eq "$(jq -r '.pullRequest.number | type' "$TMP/context.json")" "number" "unavailable snapshot keeps PR number type stable"
 
 run_fetch malformed
 assert_eq "$(jq -r '.status' "$TMP/context.json")" "unavailable" "malformed response degrades without failing review"

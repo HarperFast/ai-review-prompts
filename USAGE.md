@@ -160,7 +160,7 @@ The review prompts aren't hard-coded truth — they're a living checklist that g
 
 ### Where review outcomes get logged
 
-Every successfully completed review posts a follow-up entry in `HarperFast/ai-review-log` (private, internal-only today). Failed and cancelled attempts are called out in the Actions log but are not recorded as verdicts. Each entry captures:
+Every successfully completed review posts a follow-up entry in `HarperFast/ai-review-log` (private, internal-only today). The logger accepts only the expected provider bot's comment with the exact Actions run/attempt/head binding; a successful review step without that surface fails visibly instead of leaving a green-but-unlogged run. Failed and cancelled attempts are called out in the Actions log but are not recorded as verdicts. Each entry captures:
 
 - The repo and PR being reviewed, the model used, prompt ref, and review job status
 - The Actions run ID and attempt, base SHA, reviewed head, and current head

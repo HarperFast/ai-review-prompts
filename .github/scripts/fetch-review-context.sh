@@ -24,12 +24,19 @@ fi
 
 write_unavailable() {
 	local reason="$1"
+	if [ -f "$OUTPUT_FILE" ] && jq -e '
+		.schema == "ai-review-context/v1"
+		and (.status == "complete" or .status == "partial")
+	' "$OUTPUT_FILE" >/dev/null 2>&1; then
+		echo "::warning::Review-thread context refresh failed; retaining the previous usable snapshot: $reason"
+		return
+	fi
 	jq -n \
 		--arg fetched_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 		--arg repository "${GITHUB_REPOSITORY:-unknown}" \
 		--arg pr_number "${PR_NUMBER:-unknown}" \
 		--arg reason "$reason" \
-		'{schema:"ai-review-context/v1", status:"unavailable", fetchedAt:$fetched_at, repository:$repository, pullRequest:{number:$pr_number}, threads:[], warnings:[$reason]}' \
+		'{schema:"ai-review-context/v1", status:"unavailable", fetchedAt:$fetched_at, repository:$repository, pullRequest:{number:(if ($pr_number | test("^[0-9]+$")) then ($pr_number | tonumber) else null end)}, threads:[], warnings:[$reason]}' \
 		> "$OUTPUT_FILE"
 	echo "::warning::Review-thread context unavailable: $reason"
 }

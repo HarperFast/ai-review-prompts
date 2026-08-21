@@ -21,13 +21,8 @@
 #        reviews submitted by a custom caller via the GitHub Review
 #        API. We return the most recent matching review's id.
 #
-# Both endpoints return JSON arrays of objects with `body` and
-# `id` fields, so the same `select(.body | startswith(marker))` +
-# `| last | .id` jq pipeline works for either.
-#
-# Marker collision risk (a manually-posted comment or review
-# starting with the sentinel) is vanishingly small and self-healing
-# (next reviewer run posts/edits accordingly).
+# Both endpoints return JSON arrays of objects with `body`, `id`,
+# and `user.login` fields, so callers can pin the expected bot author.
 #
 # Inputs:
 #   MARKER               — required. Body prefix to match,
@@ -36,6 +31,8 @@
 #                          provider's surface. Default
 #                          `repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments`
 #                          (legacy claude top-level-comment path).
+#   EXPECTED_REVIEW_AUTHOR — optional bot login. Empty preserves
+#                          custom callers that do not pin an author.
 #   GH_TOKEN             — token with `pull-requests: read`
 #   GITHUB_REPOSITORY    — owner/repo (auto-set by GitHub Actions)
 #   PR_NUMBER            — pull request number
@@ -55,8 +52,11 @@ else
 fi
 
 EXISTING_ID=$(gh api --paginate "$API_URL" \
-  | jq -sr --arg marker "$MARKER" \
-    '[.[][] | select(.body // "" | startswith($marker))] | last | .id // empty')
+  | jq -sr --arg marker "$MARKER" --arg expected_author "${EXPECTED_REVIEW_AUTHOR:-}" '
+    [.[][]
+      | select($expected_author == "" or (.user.login // "") == $expected_author)
+      | select(.body // "" | startswith($marker))
+    ] | last | .id // empty')
 
 if [ -n "$EXISTING_ID" ]; then
   echo "Prior review surface ($MARKER) found at $API_PATH: id=$EXISTING_ID"

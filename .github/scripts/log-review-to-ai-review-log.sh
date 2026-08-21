@@ -32,7 +32,8 @@
 #
 # Best-effort: never fails the job. A missing AI_REVIEW_LOG_TOKEN
 # secret, an absent marker'd review comment, or a stale comment
-# all exit cleanly with a notice/warning rather than failing.
+# all exit cleanly with a notice/warning rather than failing unless
+# FAIL_ON_UNBOUND=true makes a successful-but-unbound review fatal.
 #
 # Inputs:
 #   MARKER                — required. Body prefix to match
@@ -63,8 +64,12 @@
 #                           the GitHub Review API. Both
 #                           endpoints return JSON arrays with
 #                           `body` / `updated_at` / `created_at`,
-#                           so the marker-startswith filter works
+#                           so the author-and-run-bound filter works
 #                           uniformly.
+#   EXPECTED_REVIEW_AUTHOR — optional login that must own the selected
+#                           review surface. Defaults to github-actions[bot].
+#   FAIL_ON_UNBOUND        — optional. When true, a successful review
+#                           without a bound bot-authored surface exits 1.
 #   GH_TOKEN              — token with `pull-requests: read`
 #   AI_REVIEW_LOG_TOKEN   — fine-grained PAT scoped to
 #                           ai-review-log with `issues: write`
@@ -98,6 +103,7 @@ fi
 
 PROVIDER_LABEL="${PROVIDER_LABEL:-}"
 NOTES_FILE_BASENAME="${NOTES_FILE_BASENAME:-claude-review-notes.md}"
+EXPECTED_REVIEW_AUTHOR="${EXPECTED_REVIEW_AUTHOR:-github-actions[bot]}"
 
 if [ -z "${AI_REVIEW_LOG_TOKEN:-}" ]; then
   echo "::warning::AI_REVIEW_LOG_TOKEN secret not set; skipping log entry."
@@ -124,7 +130,6 @@ if [ -z "$RUN_ID" ] || [ -z "$RUN_ATTEMPT" ]; then
 fi
 
 RUN_MARKER="<!-- ai-review-run:v1 run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA -->"
-REVIEW_PREFIX=$(printf '%s\n%s\n' "$MARKER" "$RUN_MARKER")
 
 # When this workflow job started. Used to filter out stale review
 # comments from previous runs so a cancelled in-flight run (e.g.
@@ -138,8 +143,8 @@ JOB_STARTED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" 
 #     (`/issues/<N>/comments`)
 #   * Custom Review-API callers: pull request reviews
 #     (`/pulls/<N>/reviews`)
-# Both return JSON arrays with `body` / `updated_at` / `created_at`,
-# so the marker-startswith filter is uniform. We can't use
+# Both return JSON arrays with `body` / `user.login` and timestamps,
+# so the bot-author and two-line run-binding filter is uniform. We can't use
 # `gh pr view --json comments` because it doesn't expose
 # `updated_at` (which we need below for the staleness guard).
 LOOKUP_API_PATH="${LOOKUP_API_PATH:-repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments}"
@@ -149,11 +154,24 @@ else
   LOOKUP_API_URL="${LOOKUP_API_PATH}?per_page=100"
 fi
 REVIEW_JSON=$(gh api --paginate "$LOOKUP_API_URL" \
-  | jq -s --arg prefix "$REVIEW_PREFIX" \
-    '[.[][] | select((((.body // "") | gsub("\r\n"; "\n")) | startswith($prefix)))] | last // empty')
+  | jq -s --arg marker "$MARKER" --arg run_marker "$RUN_MARKER" --arg expected_author "$EXPECTED_REVIEW_AUTHOR" '
+    def rtrim_marker: sub("[ \t]+$"; "");
+    [.[][]
+      | select((.user.login // "") == $expected_author)
+      | select(
+          (((.body // "") | gsub("\r\n"; "\n") | split("\n")) as $lines
+          | ($lines | length) >= 2
+          and (($lines[0] | rtrim_marker) == $marker)
+          and (($lines[1] | rtrim_marker) == $run_marker))
+        )
+    ] | last // empty')
 
 if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
-  echo "::warning::No review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH; skipping log."
+  if [ "${FAIL_ON_UNBOUND:-false}" = "true" ]; then
+    echo "::error::No bot-authored review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH."
+    exit 1
+  fi
+  echo "::warning::No bot-authored review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH; skipping log."
   exit 0
 fi
 
@@ -286,16 +304,26 @@ else
   echo "No run notes file at $NOTES_FILE — skipping notes append"
 fi
 
-# One ai-review-log issue per (PR, provider). The TITLE_PREFIX
-# constructed above is provider-scoped when PROVIDER_LABEL is set
-# — each provider's lookup hits only its own issues. List API
-# (not search) is used because search is eventually-consistent —
-# a same-day second review run might fire before the first issue
-# is indexed.
-EXISTING_NUMBER=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api --paginate \
-  "repos/HarperFast/ai-review-log/issues?labels=repo:$REPO_SHORT&state=all&per_page=100&sort=created&direction=desc" \
-  | jq -sr --arg prefix "$TITLE_PREFIX" \
-    '[.[][] | select(.title | startswith($prefix))] | first | .number // empty')
+# One ai-review-log issue per (PR, provider). Indexed title search finds
+# old PRs without walking the repo's full issue history. The first list
+# page is a fallback for a just-created issue not indexed by search yet.
+SEARCH_QUERY="repo:HarperFast/ai-review-log is:issue in:title label:\"repo:$REPO_SHORT\" \"$TITLE_PREFIX\""
+SEARCH_JSON=""
+if ! SEARCH_JSON=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api --method GET search/issues \
+  -f q="$SEARCH_QUERY" -f per_page=100 2>/dev/null); then
+  echo "::warning::Indexed ai-review-log lookup failed; checking only the recent issue page."
+fi
+EXISTING_NUMBER=$(printf '%s' "$SEARCH_JSON" | jq -r --arg prefix "$TITLE_PREFIX" \
+  '[.items[]? | select(.title | startswith($prefix))] | first | .number // empty' 2>/dev/null)
+if [ -z "$EXISTING_NUMBER" ]; then
+  if ! RECENT_ISSUES=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api \
+    "repos/HarperFast/ai-review-log/issues?labels=repo:$REPO_SHORT&state=all&per_page=100&sort=created&direction=desc" 2>/dev/null); then
+    echo "::warning::Recent ai-review-log lookup failed; refusing to create a possible duplicate."
+    exit 0
+  fi
+  EXISTING_NUMBER=$(printf '%s' "$RECENT_ISSUES" | jq -r --arg prefix "$TITLE_PREFIX" \
+    '[.[]? | select(.title | startswith($prefix))] | first | .number // empty' 2>/dev/null)
+fi
 
 if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then
   ISSUE_NUMBER="$EXISTING_NUMBER"

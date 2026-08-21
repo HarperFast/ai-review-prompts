@@ -262,6 +262,7 @@ jobs:
           # sentinel. The marker is what discriminates between
           # providers' comments on the same PR.
           MARKER: '<!-- gemini-review:v1 -->'
+          EXPECTED_REVIEW_AUTHOR: github-actions[bot]
         run: bash .ai-review-prompts/.github/scripts/find-prior-review-comment.sh
 
       - name: Fetch prior review body (for continuity)
@@ -683,9 +684,9 @@ jobs:
         # via `gh pr comment` or in-place via `gh api PATCH` against
         # the prior comment ID.
         #
-        # Defensive: refuses to post if the response is empty or
-        # doesn't start with the marker line. Logs a warning and
-        # skips rather than publishing mystery content.
+        # Defensive: refuses to post if either binding marker is
+        # missing. Fails the step rather than leaving a green run
+        # with no published review.
         if: steps.gemini-review.outputs.summary != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -740,6 +741,8 @@ jobs:
           REVIEWED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           REVIEW_CONTEXT_FILE: ${{ runner.temp }}/ai-review-context.json
+          EXPECTED_REVIEW_AUTHOR: github-actions[bot]
+          FAIL_ON_UNBOUND: true
           REPO_SHORT: ${{ github.event.repository.name }}
           MARKER: '<!-- gemini-review:v1 -->'
           MODEL: ${{ inputs.model }}
