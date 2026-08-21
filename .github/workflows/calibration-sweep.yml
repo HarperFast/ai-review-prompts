@@ -111,8 +111,8 @@ jobs:
           # Triage rationale for the interesting classes.
           for v in noise partial; do
             for n in $(jq -r '.[].number' "$D/$v.json"); do
-              gh api "repos/HarperFast/ai-review-log/issues/$n/comments" \
-                --jq '[.[] | {user: .user.login, body}]' \
+              gh api --paginate "repos/HarperFast/ai-review-log/issues/$n/comments?per_page=100" \
+                | jq -s '[.[][] | {user: .user.login, body}]' \
                 > "$D/comments-$n.json" \
                 || { echo "::warning::comments fetch failed for ai-review-log#$n — rationale gap"; echo '[]' > "$D/comments-$n.json"; }
             done
@@ -121,11 +121,7 @@ jobs:
           # Curated weekly issues (legacy supplements) — best-effort.
           for pair in "calibration:calibration-log" "false-negatives:false-negative-log"; do
             label="${pair%%:*}"; out="${pair##*:}"
-            gh api --paginate \
-              "repos/HarperFast/ai-review-log/issues?state=all&labels=$label&per_page=100" \
-              | jq -s --arg w "$WEEK" '[.[][] | select(.title | contains($w)) | {number, title, body}]' \
-              > "$D/$out.json" \
-              || { echo "::warning::curated '$label' fetch failed — continuing without it"; echo '[]' > "$D/$out.json"; }
+            bash .github/scripts/fetch-curated-supplement.sh "$label" "$WEEK" "$D/$out.json"
           done
 
           # How much of the week is still untriaged (signal completeness).

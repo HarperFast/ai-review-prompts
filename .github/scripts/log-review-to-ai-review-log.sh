@@ -32,7 +32,8 @@
 #
 # Best-effort: never fails the job. A missing AI_REVIEW_LOG_TOKEN
 # secret, an absent marker'd review comment, or a stale comment
-# all exit cleanly with a notice/warning rather than failing.
+# all exit cleanly with a notice/warning rather than failing unless
+# FAIL_ON_UNBOUND=true makes a successful-but-unbound review fatal.
 #
 # Inputs:
 #   MARKER                — required. Body prefix to match
@@ -57,15 +58,18 @@
 #                           Default:
 #                           `repos/<owner>/<repo>/issues/<N>/comments`
 #                           (top-level issue comments — the Claude
-#                           legacy path). Set to
+#                           and Gemini shared-workflow path). Set to
 #                           `repos/<owner>/<repo>/pulls/<N>/reviews`
-#                           for the Gemini reviewer, which submits
-#                           via the GitHub Review API rather than
-#                           posting a top-level issue comment. Both
+#                           for a custom reviewer that submits via
+#                           the GitHub Review API. Both
 #                           endpoints return JSON arrays with
 #                           `body` / `updated_at` / `created_at`,
-#                           so the marker-startswith filter works
+#                           so the author-and-run-bound filter works
 #                           uniformly.
+#   EXPECTED_REVIEW_AUTHOR — optional login that must own the selected
+#                           review surface. Defaults to github-actions[bot].
+#   FAIL_ON_UNBOUND        — optional. When true, a successful review
+#                           without a bound bot-authored surface exits 1.
 #   GH_TOKEN              — token with `pull-requests: read`
 #   AI_REVIEW_LOG_TOKEN   — fine-grained PAT scoped to
 #                           ai-review-log with `issues: write`
@@ -75,10 +79,15 @@
 #   PR_URL                — html URL of the PR
 #   REVIEW_STATUS         — outcome of the review step
 #                           (success / failure / cancelled / etc.)
+#   BASE_SHA              — base commit from the pull_request event
+#   REVIEWED_HEAD_SHA     — head commit checked out for this review
 #   REPO_SHORT            — short repo name (e.g. "harper")
 #   GITHUB_REPOSITORY     — owner/repo of the PR's repo
 #   GITHUB_RUN_ID         — current Actions run ID (for staleness
 #                           guard)
+#   GITHUB_RUN_ATTEMPT    — current Actions attempt number
+#   REVIEW_CONTEXT_FILE   — optional ai-review-context/v1 snapshot;
+#                           its status is recorded with the run
 #   RUNNER_TEMP           — runner temp dir (where the agent's
 #                           optional run-notes file lives)
 set -uo pipefail
@@ -94,11 +103,33 @@ fi
 
 PROVIDER_LABEL="${PROVIDER_LABEL:-}"
 NOTES_FILE_BASENAME="${NOTES_FILE_BASENAME:-claude-review-notes.md}"
+EXPECTED_REVIEW_AUTHOR="${EXPECTED_REVIEW_AUTHOR:-github-actions[bot]}"
 
 if [ -z "${AI_REVIEW_LOG_TOKEN:-}" ]; then
   echo "::warning::AI_REVIEW_LOG_TOKEN secret not set; skipping log entry."
   exit 0
 fi
+
+RUN_ID="${GITHUB_RUN_ID:-}"
+RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}"
+REVIEWED_HEAD_SHA="${REVIEWED_HEAD_SHA:-}"
+BASE_SHA="${BASE_SHA:-unknown}"
+
+RUN_VALIDITY=$(bash "$(dirname "$0")/classify-review-run.sh" \
+  "${REVIEW_STATUS:-}" "$REVIEWED_HEAD_SHA" "" "failure")
+case "$RUN_VALIDITY" in
+  invalid-*)
+    echo "::warning::Review attempt run=${RUN_ID:-unknown} attempt=${RUN_ATTEMPT:-unknown} is $RUN_VALIDITY (review_status=${REVIEW_STATUS:-unknown}); not logging its body as a verdict."
+    exit 0
+    ;;
+esac
+
+if [ -z "$RUN_ID" ] || [ -z "$RUN_ATTEMPT" ]; then
+  echo "::warning::Run ID or attempt is missing; refusing to create an unbound review record."
+  exit 0
+fi
+
+RUN_MARKER="<!-- ai-review-run:v1 run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA -->"
 
 # When this workflow job started. Used to filter out stale review
 # comments from previous runs so a cancelled in-flight run (e.g.
@@ -106,27 +137,79 @@ fi
 # fresh finding.
 JOB_STARTED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq '.run_started_at // empty')
 
-# Fetch the marker'd review surface via raw API. Two endpoints
-# are in use depending on the provider:
-#   * Default (Claude legacy): top-level issue comments
+# Fetch the marker'd review surface via raw API. Two endpoint
+# shapes are supported:
+#   * Default (shared Claude/Gemini): top-level issue comments
 #     (`/issues/<N>/comments`)
-#   * Gemini reviewer (MCP-based): pull request reviews
+#   * Custom Review-API callers: pull request reviews
 #     (`/pulls/<N>/reviews`)
-# Both return JSON arrays with `body` / `updated_at` / `created_at`,
-# so the marker-startswith filter is uniform. We can't use
+# Both return JSON arrays with `body` / `user.login` and timestamps,
+# so the bot-author and two-line run-binding filter is uniform. We can't use
 # `gh pr view --json comments` because it doesn't expose
 # `updated_at` (which we need below for the staleness guard).
 LOOKUP_API_PATH="${LOOKUP_API_PATH:-repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments}"
-REVIEW_JSON=$(gh api "$LOOKUP_API_PATH" \
-  | jq --arg marker "$MARKER" \
-    '[.[] | select((.body // "") | startswith($marker))] | last // empty')
-
-if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
-  echo "No marker'd review surface ($MARKER) found at $LOOKUP_API_PATH (review_status=$REVIEW_STATUS); skipping log."
+if [[ "$LOOKUP_API_PATH" == *\?* ]]; then
+  LOOKUP_API_URL="${LOOKUP_API_PATH}&per_page=100"
+else
+  LOOKUP_API_URL="${LOOKUP_API_PATH}?per_page=100"
+fi
+if ! REVIEW_PAGES=$(gh api --paginate "$LOOKUP_API_URL"); then
+  echo "::warning::Could not verify this run's review surface because the GitHub comments API failed; leaving the posted review intact and skipping logging."
+  exit 0
+fi
+if ! REVIEW_JSON=$(printf '%s\n' "$REVIEW_PAGES" \
+  | jq -s --arg marker "$MARKER" --arg run_marker "$RUN_MARKER" --arg expected_author "$EXPECTED_REVIEW_AUTHOR" '
+    def rtrim_marker: sub("[ \t]+$"; "");
+    [.[][]
+      | select((.user.login // "") == $expected_author)
+      | select(
+          (((.body // "") | gsub("\r\n"; "\n") | split("\n")) as $lines
+          | ($lines | length) >= 2
+          and (($lines[0] | rtrim_marker) == $marker)
+          and (($lines[1] | rtrim_marker) == $run_marker))
+        )
+    ] | last // empty'); then
+  echo "::warning::Could not parse the GitHub review surfaces; leaving the posted review intact and skipping logging."
   exit 0
 fi
 
-REVIEW_BODY=$(printf '%s' "$REVIEW_JSON" | jq -r '.body // empty')
+if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
+  if [ "${FAIL_ON_UNBOUND:-false}" = "true" ]; then
+    UNBOUND_CURRENT_HEAD=""
+    if ! UNBOUND_CURRENT_HEAD=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) \
+      || [ -z "$UNBOUND_CURRENT_HEAD" ]; then
+      echo "::warning::Could not re-check the PR head while diagnosing an unbound review surface; skipping logging without turning a GitHub API blip into a review failure."
+      exit 0
+    fi
+    if [ "$UNBOUND_CURRENT_HEAD" != "$REVIEWED_HEAD_SHA" ]; then
+      echo "::notice::A newer push exists, so this run's shared review surface may have been replaced or never posted; skipping superseded evidence without failing the current PR."
+      exit 0
+    fi
+    if [ -n "$JOB_STARTED" ] && printf '%s\n' "$REVIEW_PAGES" \
+      | jq -se --arg marker "$MARKER" --arg reviewed_head "$REVIEWED_HEAD_SHA" \
+        --arg expected_author "$EXPECTED_REVIEW_AUTHOR" --arg job_started "$JOB_STARTED" '
+        def rtrim_marker: sub("[ \t]+$"; "");
+        [.[][]
+          | select((.user.login // "") == $expected_author)
+          | ((.updated_at // .submitted_at // .created_at // "") as $surface_at
+             | ((.body // "") | gsub("\r\n"; "\n") | split("\n")) as $lines
+             | select(($lines | length) >= 2)
+             | select(($lines[0] | rtrim_marker) == $marker)
+             | (($lines[1] | rtrim_marker)
+                | capture("^<!-- ai-review-run:v1 run=(?<run>[0-9]+) attempt=(?<attempt>[0-9]+) head=(?<head>[0-9A-Fa-f]+) -->$")?) as $binding
+             | select($binding.head == $reviewed_head and $surface_at >= $job_started))
+        ] | length > 0' >/dev/null 2>&1; then
+      echo "::notice::Another run updated this provider's shared review surface for the same head after this job started; skipping overwritten evidence without failing the current PR."
+      exit 0
+    fi
+    echo "::error::No bot-authored review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH."
+    exit 1
+  fi
+  echo "::warning::No bot-authored review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH; skipping log."
+  exit 0
+fi
+
+REVIEW_BODY=$(printf '%s' "$REVIEW_JSON" | jq -r '.body // empty' | sed -e 's/\r$//')
 # Prefer updated_at (top-level comments — reflects the most
 # recent edit) > submitted_at (PR reviews — set when the agent
 # calls submit_pending_pull_request_review) > created_at (issue-
@@ -155,6 +238,18 @@ if [ -n "$JOB_STARTED" ] && [ -n "$REVIEW_AT" ] && [ "$REVIEW_AT" \< "$JOB_START
   exit 0
 fi
 
+# Resolve current-head validity only after selecting this run's
+# bound review surface, minimizing the interval in which a new push
+# could make a clean-current classification stale.
+CURRENT_HEAD_SHA=""
+HEAD_FETCH_STATUS="failure"
+if CURRENT_HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) \
+  && [ -n "$CURRENT_HEAD_SHA" ]; then
+  HEAD_FETCH_STATUS="success"
+fi
+RUN_VALIDITY=$(bash "$(dirname "$0")/classify-review-run.sh" \
+  "${REVIEW_STATUS:-}" "$REVIEWED_HEAD_SHA" "$CURRENT_HEAD_SHA" "$HEAD_FETCH_STATUS")
+
 # Title: derive the finding count from the review body. The logic — the
 # standardized one-sentence summary line as the primary signal, `### N.`
 # headers as the fallback, plus the #68 hardening (spelled-out cardinals,
@@ -179,16 +274,25 @@ else
   TITLE_PREFIX="[$REPO_SHORT] PR #$PR_NUMBER:"
 fi
 
-if [ "$REVIEW_STATUS" = "success" ]; then
-  TITLE="$TITLE_PREFIX $COUNT_PART"
-else
-  TITLE="$TITLE_PREFIX $COUNT_PART (review $REVIEW_STATUS — may be incomplete)"
-fi
+case "$RUN_VALIDITY" in
+  valid-current) TITLE="$TITLE_PREFIX $COUNT_PART" ;;
+  valid-superseded) TITLE="$TITLE_PREFIX ${FINDING_COUNT} finding(s) — superseded by push" ;;
+  valid-head-unverified) TITLE="$TITLE_PREFIX ${FINDING_COUNT} finding(s) — current head unverified" ;;
+  *)
+    echo "::warning::Unexpected run validity '$RUN_VALIDITY'; skipping log entry."
+    exit 0
+    ;;
+esac
 
 # Run URL — one click to the action run page where usage / cost
 # data is shown (token counts, estimated $). Useful for both
 # providers; included unconditionally.
 RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+CURRENT_HEAD_FIELD="${CURRENT_HEAD_SHA:-unknown}"
+REVIEW_CONTEXT_STATUS="unknown"
+if [ -n "${REVIEW_CONTEXT_FILE:-}" ] && [ -f "$REVIEW_CONTEXT_FILE" ]; then
+  REVIEW_CONTEXT_STATUS=$(jq -r '.status // "unknown"' "$REVIEW_CONTEXT_FILE" 2>/dev/null || printf 'unknown')
+fi
 
 # ai-review-prompts ref this run reviewed under (passed by the reusable
 # workflow's log step as AI_REVIEW_PROMPTS_REF). Recorded in the body so
@@ -212,11 +316,11 @@ ISSUE_NUMBER=""
 if [ -n "$PROVIDER_LABEL" ]; then
   PEERS_QUERY=$(printf '%s' "[$REPO_SHORT] PR #$PR_NUMBER" | jq -sRr @uri)
   PEERS_URL="https://github.com/HarperFast/ai-review-log/issues?q=is%3Aissue+${PEERS_QUERY}"
-  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Provider:** %s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Peers:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Date:** %s\n\n---\n\n%s\n' \
-    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$PROVIDER_LABEL" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$PEERS_URL" "$REVIEW_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
+  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Provider:** %s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Peers:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Run ID:** %s\n**Run attempt:** %s\n**Base SHA:** %s\n**Reviewed head:** %s\n**Current head:** %s\n**Run validity:** %s\n**Review context:** %s\n**Date:** %s\n\n---\n\n%s\n' \
+    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$PROVIDER_LABEL" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$PEERS_URL" "$REVIEW_STATUS" "$RUN_ID" "$RUN_ATTEMPT" "$BASE_SHA" "$REVIEWED_HEAD_SHA" "$CURRENT_HEAD_FIELD" "$RUN_VALIDITY" "$REVIEW_CONTEXT_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
 else
-  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Date:** %s\n\n---\n\n%s\n' \
-    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$REVIEW_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
+  BODY=$(printf '**Source:** %s\n**Repo:** %s\n**PR:** #%s\n**Model:** %s\n**Prompt ref:** %s\n**Run:** %s\n**Phase:** baseline\n**Review job status:** %s\n**Run ID:** %s\n**Run attempt:** %s\n**Base SHA:** %s\n**Reviewed head:** %s\n**Current head:** %s\n**Run validity:** %s\n**Review context:** %s\n**Date:** %s\n\n---\n\n%s\n' \
+    "$PR_URL" "$REPO_SHORT" "$PR_NUMBER" "$MODEL" "$PROMPT_REF_FIELD" "$RUN_URL" "$REVIEW_STATUS" "$RUN_ID" "$RUN_ATTEMPT" "$BASE_SHA" "$REVIEWED_HEAD_SHA" "$CURRENT_HEAD_FIELD" "$RUN_VALIDITY" "$REVIEW_CONTEXT_STATUS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REVIEW_BODY")
 fi
 
 # Structured run notes from the agent (optional). This is the
@@ -234,19 +338,37 @@ else
   echo "No run notes file at $NOTES_FILE — skipping notes append"
 fi
 
-# One ai-review-log issue per (PR, provider). The TITLE_PREFIX
-# constructed above is provider-scoped when PROVIDER_LABEL is set
-# — each provider's lookup hits only its own issues. List API
-# (not search) is used because search is eventually-consistent —
-# a same-day second review run might fire before the first issue
-# is indexed.
-EXISTING_NUMBER=$(curl -sS \
-  -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  "https://api.github.com/repos/HarperFast/ai-review-log/issues?labels=repo:$REPO_SHORT&state=all&per_page=100&sort=created&direction=desc" \
-  | jq -r --arg prefix "$TITLE_PREFIX" \
-    '[.[] | select(.title | startswith($prefix))] | first | .number // empty')
+# One ai-review-log issue per (PR, provider). Indexed title search finds
+# old PRs without walking the repo's full issue history. The first list
+# page is a fallback for a just-created issue not indexed by search yet.
+SEARCH_QUERY="repo:HarperFast/ai-review-log is:issue in:title label:\"repo:$REPO_SHORT\" \"$TITLE_PREFIX\""
+SEARCH_JSON=""
+SEARCH_FAILED=false
+if ! SEARCH_JSON=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api --method GET search/issues \
+  -f q="$SEARCH_QUERY" -f per_page=100 2>/dev/null); then
+  SEARCH_FAILED=true
+  echo "::warning::Indexed ai-review-log lookup failed; falling back to the complete labeled issue history."
+fi
+EXISTING_NUMBER=$(printf '%s' "$SEARCH_JSON" | jq -r --arg prefix "$TITLE_PREFIX" \
+  '[.items[]? | select(.title | startswith($prefix))] | first | .number // empty' 2>/dev/null)
+if [ -z "$EXISTING_NUMBER" ]; then
+  ISSUE_LIST_URL="repos/HarperFast/ai-review-log/issues?labels=repo:$REPO_SHORT&state=all&per_page=100&sort=created&direction=desc"
+  if [ "$SEARCH_FAILED" = "true" ]; then
+    if ! EXISTING_NUMBER=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api --paginate "$ISSUE_LIST_URL" 2>/dev/null \
+      | jq -sr --arg prefix "$TITLE_PREFIX" \
+        '[.[][] | select(.title | startswith($prefix))] | first | .number // empty'); then
+      echo "::warning::Fallback ai-review-log lookup failed; refusing to create a possible duplicate."
+      exit 0
+    fi
+  else
+    if ! RECENT_ISSUES=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api "$ISSUE_LIST_URL" 2>/dev/null); then
+      echo "::warning::Recent ai-review-log lookup failed; refusing to create a possible duplicate."
+      exit 0
+    fi
+    EXISTING_NUMBER=$(printf '%s' "$RECENT_ISSUES" | jq -r --arg prefix "$TITLE_PREFIX" \
+      '[.[]? | select(.title | startswith($prefix))] | first | .number // empty' 2>/dev/null)
+  fi
+fi
 
 if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then
   ISSUE_NUMBER="$EXISTING_NUMBER"
@@ -261,13 +383,18 @@ if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then
     "https://api.github.com/repos/HarperFast/ai-review-log/issues/$EXISTING_NUMBER/comments" \
     -d "$COMMENT_PAYLOAD")
 
-  PATCH_PAYLOAD=$(jq -nc --arg title "$TITLE" '{title: $title}')
-  HTTP_T=$(curl -sS -o /tmp/ai-log-patch-resp.json -w '%{http_code}' -X PATCH \
-    -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "https://api.github.com/repos/HarperFast/ai-review-log/issues/$EXISTING_NUMBER" \
-    -d "$PATCH_PAYLOAD")
+  HTTP_T=""
+  if [ "$RUN_VALIDITY" = "valid-current" ]; then
+    PATCH_PAYLOAD=$(jq -nc --arg title "$TITLE" '{title: $title}')
+    HTTP_T=$(curl -sS -o /tmp/ai-log-patch-resp.json -w '%{http_code}' -X PATCH \
+      -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "https://api.github.com/repos/HarperFast/ai-review-log/issues/$EXISTING_NUMBER" \
+      -d "$PATCH_PAYLOAD")
+  else
+    echo "Preserving the existing issue title for $RUN_VALIDITY evidence."
+  fi
 
   if [ "$HTTP_C" -ge 200 ] && [ "$HTTP_C" -lt 300 ]; then
     COMMENT_URL=$(jq -r '.html_url' /tmp/ai-log-comment-resp.json)
@@ -277,7 +404,7 @@ if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then
     cat /tmp/ai-log-comment-resp.json
   fi
 
-  if [ "$HTTP_T" -lt 200 ] || [ "$HTTP_T" -ge 300 ]; then
+  if [ -n "$HTTP_T" ] && { [ "$HTTP_T" -lt 200 ] || [ "$HTTP_T" -ge 300 ]; }; then
     echo "::warning::ai-review-log title PATCH failed (HTTP $HTTP_T):"
     cat /tmp/ai-log-patch-resp.json
   fi

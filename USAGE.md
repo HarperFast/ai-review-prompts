@@ -160,10 +160,15 @@ The review prompts aren't hard-coded truth — they're a living checklist that g
 
 ### Where review outcomes get logged
 
-Every completed review posts a follow-up entry in `HarperFast/ai-review-log` (private, internal-only today). Each entry captures:
+The reusable workflows default `expected-review-author` to their normal posting identities (`claude[bot]` and `github-actions[bot]`). A consumer that deliberately supplies a different posting token can override that input without changing the shared scripts.
 
-- The repo and PR being reviewed, the model used, and the review job status
-- The finding count (or "no blockers") in the title
+Every successfully completed review posts a follow-up entry in `HarperFast/ai-review-log` (private, internal-only today). The logger accepts only the expected provider bot's comment with the exact Actions run/attempt/head binding; a successful review step without that surface fails visibly instead of leaving a green-but-unlogged run. Failed and cancelled attempts are called out in the Actions log but are not recorded as verdicts. Each entry captures:
+
+- The repo and PR being reviewed, the model used, prompt ref, and review job status
+- The Actions run ID and attempt, base SHA, reviewed head, and current head
+- Whether the reviewed head is current, superseded by a later push, or could not be re-verified
+- Whether the prior-thread snapshot was complete, partial, or unavailable
+- The finding count (or "no blockers" only for a successful current-head run) in the title
 - The verbatim review body as an issue body, labeled `repo:<short>`, `verdict:pending`, `phase:baseline`
 
 This is what gets swept periodically to see how the bot's judgment is holding up — are findings actually blocker-worthy? Is the review missing things we later catch in human review? Is a layer rule too loose or too strict?

@@ -6,10 +6,9 @@ name: Script tests
 # blocks them from merging (a GitHub footgun), so leaving it always-on is
 # what makes it safe to mark as a required check on `main`. The job is
 # seconds-fast and zero-dependency, so always running it costs nothing.
-# Scope is PURE-LOGIC only (no `gh` / network) — the gh-orchestration
-# scripts (post-review-comment, find-prior-review-comment,
-# log-review-to-ai-review-log) are exercised by the live review dogfood
-# instead. See tests/README.md.
+# Tests never use the network. Pure transforms run directly; orchestration
+# scripts run against PATH-injected `gh` / `curl` fixtures so pagination,
+# failure, and payload contracts are deterministic. See tests/README.md.
 
 on:
   pull_request:
