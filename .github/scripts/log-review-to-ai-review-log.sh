@@ -185,6 +185,23 @@ if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
       echo "::notice::A newer push exists, so this run's shared review surface may have been replaced or never posted; skipping superseded evidence without failing the current PR."
       exit 0
     fi
+    if [ -n "$JOB_STARTED" ] && printf '%s\n' "$REVIEW_PAGES" \
+      | jq -se --arg marker "$MARKER" --arg reviewed_head "$REVIEWED_HEAD_SHA" \
+        --arg expected_author "$EXPECTED_REVIEW_AUTHOR" --arg job_started "$JOB_STARTED" '
+        def rtrim_marker: sub("[ \t]+$"; "");
+        [.[][]
+          | select((.user.login // "") == $expected_author)
+          | ((.updated_at // .submitted_at // .created_at // "") as $surface_at
+             | ((.body // "") | gsub("\r\n"; "\n") | split("\n")) as $lines
+             | select(($lines | length) >= 2)
+             | select(($lines[0] | rtrim_marker) == $marker)
+             | (($lines[1] | rtrim_marker)
+                | capture("^<!-- ai-review-run:v1 run=(?<run>[0-9]+) attempt=(?<attempt>[0-9]+) head=(?<head>[0-9A-Fa-f]+) -->$")?) as $binding
+             | select($binding.head == $reviewed_head and $surface_at >= $job_started))
+        ] | length > 0' >/dev/null 2>&1; then
+      echo "::notice::Another run updated this provider's shared review surface for the same head after this job started; skipping overwritten evidence without failing the current PR."
+      exit 0
+    fi
     echo "::error::No bot-authored review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH."
     exit 1
   fi

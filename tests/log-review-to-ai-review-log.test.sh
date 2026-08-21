@@ -43,9 +43,9 @@ ${STUB_RUN_MARKER}
 ${STUB_REVIEW_TEXT}"
 	fi
 	WRONG="${STUB_MARKER}
-<!-- ai-review-run:v1 run=999 attempt=1 head=abc -->
+<!-- ai-review-run:v1 run=999 attempt=1 head=${STUB_OTHER_RUN_HEAD} -->
 wrong concurrent body"
-	jq -nc --arg wrong "$WRONG" '[{body:$wrong, user:{login:"github-actions[bot]"}, updated_at:"2026-08-20T10:02:00Z", created_at:"2026-08-20T10:02:00Z"}]'
+	jq -nc --arg wrong "$WRONG" --arg at "$STUB_OTHER_RUN_AT" '[{body:$wrong, user:{login:"github-actions[bot]"}, updated_at:$at, created_at:$at}]'
 	if [ "${STUB_UNBOUND:-0}" != "1" ]; then
 		jq -nc --arg correct "$CORRECT" '[{body:$correct, user:{login:"github-actions[bot]"}, updated_at:"2026-08-20T10:01:00Z", created_at:"2026-08-20T10:01:00Z"}]'
 		jq -nc --arg correct "$CORRECT" '[{body:($correct + "\\nmalicious injected verdict"), user:{login:"attacker"}, updated_at:"2026-08-20T10:03:00Z", created_at:"2026-08-20T10:03:00Z"}]'
@@ -104,6 +104,8 @@ run_logger() {
 	STUB_LOOKUP_FAILURE="${7:-0}" \
 	STUB_COMMENT_FAILURE="${8:-0}" \
 	STUB_SEARCH_FAILURE="${9:-0}" \
+	STUB_OTHER_RUN_HEAD="${10:-def}" \
+	STUB_OTHER_RUN_AT="${11:-2026-08-20T10:02:00Z}" \
 	STUB_MARKER="$MARKER" \
 	STUB_RUN_MARKER="$RUN_MARKER" \
 	STUB_REVIEW_TEXT='Reviewed; no blockers found.' \
@@ -160,6 +162,12 @@ run_logger abc success 0 0 1
 assert_status "$?" 0 "unbound review remains best-effort by default"
 run_logger abc success 0 0 1 true
 assert_status "$?" 1 "strict unbound review fails the workflow visibly"
+
+run_logger abc success 0 0 1 true 0 0 0 abc
+assert_status "$?" 0 "same-head concurrent overwrite does not fail the older review run"
+
+run_logger abc success 0 0 1 true 0 0 0 abc 2026-08-20T09:59:00Z
+assert_status "$?" 1 "stale same-head surface cannot mask a missing current review"
 
 run_logger def success 0 0 1 true
 assert_status "$?" 0 "overwritten superseded surface does not fail the current PR"

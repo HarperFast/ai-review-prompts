@@ -52,7 +52,10 @@ while IFS= read -r ISSUE; do
 		COMMENTS='[]'
 		echo "::warning::Comments fetch failed for ai-review-log#$NUMBER"
 	fi
-	ENRICHED=$(printf '%s' "$ISSUE" | jq -c --argjson comments "$COMMENTS" '. + {comments: $comments}')
+	if ! ENRICHED=$(printf '%s\n%s\n' "$ISSUE" "$COMMENTS" | jq -sc '.[0] + {comments: .[1]}'); then
+		echo "::warning::Could not enrich ai-review-log#$NUMBER; retaining the issue with empty comment evidence"
+		ENRICHED=$(printf '%s' "$ISSUE" | jq -c '. + {comments: []}')
+	fi
 	RESULT_ITEMS+=("$ENRICHED")
 done < <(printf '%s' "$ISSUES" | jq -c '.[]')
 
