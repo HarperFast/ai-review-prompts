@@ -674,6 +674,7 @@ jobs:
           exit "$code"
 
       - name: Post Gemini review comment
+        id: post_review
         # The Gemini step above runs in single-shot text-completion
         # mode and CAN'T call `gh pr comment` itself (unlike
         # claude-code-action which runs Claude in an agentic loop
@@ -705,7 +706,7 @@ jobs:
         # comments, and any item it can't anchor to a diff line stays
         # present in the top-level comment (nothing lost). No-ops when
         # the agent emitted no inline block.
-        if: steps.gemini-review.outputs.summary != ''
+        if: steps.post_review.outputs.posted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}

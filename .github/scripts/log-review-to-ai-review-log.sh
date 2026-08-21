@@ -109,16 +109,8 @@ RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}"
 REVIEWED_HEAD_SHA="${REVIEWED_HEAD_SHA:-}"
 BASE_SHA="${BASE_SHA:-unknown}"
 
-CURRENT_HEAD_SHA=""
-HEAD_FETCH_STATUS="failure"
-if [ "${REVIEW_STATUS:-}" = "success" ]; then
-  if CURRENT_HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) \
-    && [ -n "$CURRENT_HEAD_SHA" ]; then
-    HEAD_FETCH_STATUS="success"
-  fi
-fi
 RUN_VALIDITY=$(bash "$(dirname "$0")/classify-review-run.sh" \
-  "${REVIEW_STATUS:-}" "$REVIEWED_HEAD_SHA" "$CURRENT_HEAD_SHA" "$HEAD_FETCH_STATUS")
+  "${REVIEW_STATUS:-}" "$REVIEWED_HEAD_SHA" "" "failure")
 case "$RUN_VALIDITY" in
   invalid-*)
     echo "::warning::Review attempt run=${RUN_ID:-unknown} attempt=${RUN_ATTEMPT:-unknown} is $RUN_VALIDITY (review_status=${REVIEW_STATUS:-unknown}); not logging its body as a verdict."
@@ -161,7 +153,7 @@ REVIEW_JSON=$(gh api --paginate "$LOOKUP_API_URL" \
     '[.[][] | select((((.body // "") | gsub("\r\n"; "\n")) | startswith($prefix)))] | last // empty')
 
 if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "null" ]; then
-  echo "No review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH; skipping log."
+  echo "::warning::No review surface bound to run=$RUN_ID attempt=$RUN_ATTEMPT head=$REVIEWED_HEAD_SHA found at $LOOKUP_API_PATH; skipping log."
   exit 0
 fi
 
@@ -193,6 +185,18 @@ if [ -n "$JOB_STARTED" ] && [ -n "$REVIEW_AT" ] && [ "$REVIEW_AT" \< "$JOB_START
   echo "::notice::Latest review comment update ($REVIEW_AT) predates this job's start ($JOB_STARTED); skipping to avoid re-logging stale content."
   exit 0
 fi
+
+# Resolve current-head validity only after selecting this run's
+# bound review surface, minimizing the interval in which a new push
+# could make a clean-current classification stale.
+CURRENT_HEAD_SHA=""
+HEAD_FETCH_STATUS="failure"
+if CURRENT_HEAD_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) \
+  && [ -n "$CURRENT_HEAD_SHA" ]; then
+  HEAD_FETCH_STATUS="success"
+fi
+RUN_VALIDITY=$(bash "$(dirname "$0")/classify-review-run.sh" \
+  "${REVIEW_STATUS:-}" "$REVIEWED_HEAD_SHA" "$CURRENT_HEAD_SHA" "$HEAD_FETCH_STATUS")
 
 # Title: derive the finding count from the review body. The logic — the
 # standardized one-sentence summary line as the primary signal, `### N.`
@@ -288,13 +292,10 @@ fi
 # (not search) is used because search is eventually-consistent —
 # a same-day second review run might fire before the first issue
 # is indexed.
-EXISTING_NUMBER=$(curl -sS \
-  -H "Authorization: Bearer $AI_REVIEW_LOG_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  "https://api.github.com/repos/HarperFast/ai-review-log/issues?labels=repo:$REPO_SHORT&state=all&per_page=100&sort=created&direction=desc" \
-  | jq -r --arg prefix "$TITLE_PREFIX" \
-    '[.[] | select(.title | startswith($prefix))] | first | .number // empty')
+EXISTING_NUMBER=$(GH_TOKEN="$AI_REVIEW_LOG_TOKEN" gh api --paginate \
+  "repos/HarperFast/ai-review-log/issues?labels=repo:$REPO_SHORT&state=all&per_page=100&sort=created&direction=desc" \
+  | jq -sr --arg prefix "$TITLE_PREFIX" \
+    '[.[][] | select(.title | startswith($prefix))] | first | .number // empty')
 
 if [ -n "$EXISTING_NUMBER" ] && [ "$EXISTING_NUMBER" != "null" ]; then
   ISSUE_NUMBER="$EXISTING_NUMBER"

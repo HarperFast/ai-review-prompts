@@ -15,6 +15,13 @@ if [[ "$ARGS" == *"/actions/runs/"* ]]; then
 	printf '%s\n' '2026-08-20T10:00:00Z'
 elif [[ "$ARGS" == *"/pulls/7 --jq"* ]]; then
 	printf '%s\n' "$STUB_CURRENT_HEAD"
+elif [[ "$ARGS" == *"repos/HarperFast/ai-review-log/issues?"* ]]; then
+	printf '%s\n' '[]'
+	if [ "${STUB_EXISTING_ISSUE:-0}" = "1" ]; then
+		printf '%s\n' '[{"title":"[harper] PR #7: no blockers","number":42}]'
+	else
+		printf '%s\n' '[]'
+	fi
 elif [[ "$ARGS" == *"/issues/7/comments"* ]]; then
 	if [ "${STUB_CRLF:-0}" = "1" ]; then
 		CORRECT=$(printf '%s\r\n%s\r\n%s' "$STUB_MARKER" "$STUB_RUN_MARKER" "$STUB_REVIEW_TEXT")
@@ -50,13 +57,7 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 printf '%s %s\n' "$METHOD" "$URL" >> "$STUB_CURL_LOG"
-if [[ "$URL" == *"issues?labels="* ]]; then
-	if [ "${STUB_EXISTING_ISSUE:-0}" = "1" ]; then
-		printf '%s\n' '[{"title":"[harper] PR #7: no blockers","number":42}]'
-	else
-		printf '%s\n' '[]'
-	fi
-elif [[ "$URL" == "https://api.github.com/repos/HarperFast/ai-review-log/issues" ]]; then
+if [[ "$URL" == "https://api.github.com/repos/HarperFast/ai-review-log/issues" ]]; then
 	printf '%s\n' "$DATA" > "$STUB_CAPTURE"
 	printf '%s\n' '{"html_url":"https://example/log/42","number":42}' > "$OUT"
 	printf '201'
@@ -127,6 +128,7 @@ assert_eq "$(printf '%s' "$PAYLOAD" | jq -r '.title')" "[harper] PR #7: no block
 run_logger def success 1
 assert_status "$?" 0 "superseded existing-issue logger remains best-effort"
 assert_not_contains "$(<"$TMP/curl.log")" "PATCH https://api.github.com/repos/HarperFast/ai-review-log/issues/42" "superseded run cannot overwrite a current issue title"
+assert_contains "$(<"$TMP/curl.log")" "POST https://api.github.com/repos/HarperFast/ai-review-log/issues/42/comments" "existing issue lookup covers later API pages"
 
 run_logger abc failure
 assert_status "$?" 0 "failed review skip remains best-effort"
