@@ -35,6 +35,15 @@ This is per-PR memory. Cross-PR pattern learning happens via the workflow's log 
 
   A wrapper that covers only one dispatch surface is a silent bypass waiting to happen. Trace through `node_modules/<framework>/` if the dispatch shape isn't obvious from the wrapper's code alone — don't assume the documented behavior is the _only_ behavior.
 
+- **Sibling implementations of the fixed path.** When a change guards, fixes, or tightens **one** code path, find the parallel paths that share its contract and check whether each one needs the same change. A fix applied to one of several equivalent implementations leaves the others as latent instances of the same defect, and the diff gives no hint they exist — the reviewer has to go look. The recurring shapes:
+  - Two backends behind one interface (storage engines, transports, cache tiers): a guard added to one and not its twin.
+  - Adjacent callbacks or handlers in the same file that share a helper and an unguarded failure mode.
+  - The other branch of a two-armed condition, where only the arm the PR exercised was updated.
+  - Other callers of a helper whose contract the PR just widened or narrowed.
+  - One more entry point into an operation the PR is protecting (an additional delete/write/close route that bypasses the new check).
+
+  Name the specific sibling and what happens there, not "check for other cases" — an unlocatable finding is noise. If you looked and the siblings genuinely do not need the change, say so; that is useful review output.
+
 - **Public/private boundaries.** Are new exports from `src/index.ts` (or equivalent) intentional? Do they need JSDoc? Do internals stay scoped?
 - **Breaking changes.** Is this one? Is the version bumped? Is a migration path documented? For repos with maintenance branches (e.g. `v1.x`), does the fix need a backport?
 - **Observable behavior changes.** If behavior changes on a code path integrators depend on, the change needs to be documented in JSDoc, a CHANGELOG, or a PR body readable by release-notes tooling.
@@ -80,6 +89,15 @@ Only flag gaps the PR **itself** creates. Pre-existing coverage gaps in code the
 - **NEW iterated string identifiers.** If the PR adds code that iterates over method names, verb lists, event names, etc. and a typo in one would silently disable a feature, each name needs direct coverage. Blocker.
 
 The four categories above are the *whole* list of missing-coverage blockers, and **a defect confined to test code is a Suggestion, not a blocker.** A test that works but is fragile (a pooled-`Buffer` alignment hazard in an assertion, only the last of several async writes awaited, a timing-sensitive sleep), and missing coverage that falls *outside* the four categories (an internal non-security branch, an error/cleanup path), are real-but-non-gating: post them as Suggestions. This is distinct from a test that validates *nothing* — wrong mechanism, stubs out the I/O it is supposed to exercise, passes vacuously — which stays a finding, and from an untested new branch that is itself security-critical, which is a blocker under the second category. Past over-calls (both peer-corroborated): a pooled-`Buffer`/`Float32Array` alignment hazard in three test assertions raised as a blocker where gemini rated the same three sites *medium* and no production path was affected (harper#1856, approved by the maintainer); an untested new monitor `CLOSED`/`releaseReadTxn()` branch raised as a blocker where the maintainer filed the same gap at *Low* and merged the PR without it (harper#1860).
+
+**Ask of every new test: would it still pass with the fix reverted?** A test that cannot fail is worse than a missing one, because it reports coverage that does not exist — and unlike a coverage gap, nothing else will ever surface it. This is the concrete check behind "passes vacuously" above; run it mentally against the PR's own change. What it catches:
+
+- An assertion that restates something the code under test does not control — a shape the response mapper always produces, a length that is a property of the constructor, a value the fixture just set.
+- A test that never reaches the new branch: it forces the path the fix did not change, or sets up state where the guard is not consulted, so the fix and its absence look identical.
+- A timing-dependent setup whose only failure mode is a silent pass — a fixed sleep or a race that, when it loses, skips the assertion instead of failing it.
+- A regression that would **hang** rather than fail if the defect returned: an unbounded await with no deadline, so the suite times out at the job level with no attribution.
+
+Say which of these it is and what the test would need to assert instead. A test that validates nothing is a finding at the severity of the thing it was supposed to protect, not an automatic blocker.
 
 Pre-existing gaps are NOT findings. "This function has no tests" on code the PR touches but didn't add is a repo-maintenance issue, not a PR blocker.
 
