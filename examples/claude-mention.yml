@@ -32,7 +32,7 @@ jobs:
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
       github.event.comment.author_association)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       # Write access is intentional — mention mode is "do work", which
       # means editing files, committing, and pushing.
@@ -74,8 +74,8 @@ jobs:
             echo "model=claude-opus-5" >> "$GITHUB_OUTPUT"
             echo "Selected claude-opus-5 (deep requested)"
           else
-            echo "model=claude-sonnet-4-6" >> "$GITHUB_OUTPUT"
-            echo "Selected claude-sonnet-4-6 (default)"
+            echo "model=claude-sonnet-5" >> "$GITHUB_OUTPUT"
+            echo "Selected claude-sonnet-5 (default)"
           fi
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
@@ -119,7 +119,7 @@ jobs:
           # workflow needs the allowlist.
           claude_args: |
             --model ${{ steps.mention.outputs.model }}
-            --max-turns 48
+            --max-turns 96
             # Tool allowlist — keep tight. Every entry here is a potential
             # prompt-injection RCE primitive if a malicious input steers the
             # agent toward it. Notably ABSENT by design:

@@ -18,6 +18,9 @@
 #                                `<!-- gemini-review:v1 -->`).
 #                                Defense against posting mystery
 #                                content if the model deviates.
+#   RUN_MARKER                 — required. Exact second-line marker
+#                                binding the body to run id, attempt,
+#                                and reviewed head.
 #   BODY                       — required. Agent's response text
 #                                (typically captured from the
 #                                action's `gemini_response` step
@@ -30,11 +33,24 @@
 #   PR_NUMBER                  — pull request number
 set -uo pipefail
 
+set_posted() {
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    printf 'posted=%s\n' "$1" >> "$GITHUB_OUTPUT"
+  fi
+}
+
 if [ -z "${MARKER:-}" ]; then
+  set_posted false
   echo "::error::MARKER env var is required."
   exit 1
 fi
+if [ -z "${RUN_MARKER:-}" ]; then
+  set_posted false
+  echo "::error::RUN_MARKER env var is required."
+  exit 1
+fi
 if [ -z "${BODY:-}" ]; then
+  set_posted false
   echo "::notice::No agent response — skipping post."
   exit 0
 fi
@@ -46,17 +62,23 @@ fi
 # marker check would refuse to post a perfectly valid review.
 TRIMMED=$(printf '%s' "$BODY" \
   | sed -e '1,/[^[:space:]]/{/^[[:space:]]*$/d;}' \
-  | sed -e '1s/^[[:space:]]*//')
+  | sed -e '1s/^[[:space:]]*//' \
+  | sed -e '1,2s/[[:space:]]*$//' \
+  | sed -e 's/\r$//')
 
 FIRST_LINE=$(printf '%s' "$TRIMMED" | head -1)
-case "$FIRST_LINE" in
-  "$MARKER"*) ;;
-  *)
-    echo "::warning::Agent response did not start with marker ('$MARKER'); refusing to post mystery content. First line was:"
+SECOND_LINE=$(printf '%s' "$TRIMMED" | sed -n '2p')
+if [ "$FIRST_LINE" != "$MARKER" ]; then
+    set_posted false
+    echo "::error::Agent response did not start with marker ('$MARKER'); refusing to post mystery content. First line was:"
     printf '  %s\n' "$FIRST_LINE"
-    exit 0
-    ;;
-esac
+    exit 1
+fi
+if [ "$SECOND_LINE" != "$RUN_MARKER" ]; then
+  set_posted false
+  echo "::error::Agent response did not carry this run's binding marker on line 2; refusing to post unbound content."
+  exit 1
+fi
 
 # Use --body-file / -F body=@<file> to dodge shell-arg-length
 # limits for large reviews.
@@ -66,10 +88,22 @@ printf '%s\n' "$TRIMMED" > "$TMPF"
 
 if [ -n "${PRIOR_REVIEW_COMMENT_ID:-}" ]; then
   echo "Editing prior review comment #${PRIOR_REVIEW_COMMENT_ID}"
-  gh api -X PATCH \
+  if gh api -X PATCH \
     "repos/${GITHUB_REPOSITORY}/issues/comments/${PRIOR_REVIEW_COMMENT_ID}" \
-    -F "body=@${TMPF}"
+    -F "body=@${TMPF}"; then
+    set_posted true
+  else
+    POST_STATUS=$?
+    set_posted false
+    exit "$POST_STATUS"
+  fi
 else
   echo "Posting fresh review comment on PR #${PR_NUMBER}"
-  gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file "${TMPF}"
+  if gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file "${TMPF}"; then
+    set_posted true
+  else
+    POST_STATUS=$?
+    set_posted false
+    exit "$POST_STATUS"
+  fi
 fi

@@ -41,7 +41,8 @@ The env var `CALIB_DATA` points at a directory containing:
 * `comments-<n>.json` — all comments for each noise/partial issue (the
   triage rationale lives here).
 * `calibration-log.json`, `false-negative-log.json` — the curated weekly
-  issues (body + comments) when they exist; may be empty arrays.
+  issues when they exist (`{number, title, body, labels, comments}`), with
+  every comment page embedded in `comments`; may be empty arrays.
 * `pending-count.txt` — how many `verdict:pending` issues remain open
   (context for how complete the week's signal is).
 

@@ -149,7 +149,7 @@ The label's suffix is a scope contract. Asks that would require judgment beyond 
 - **Same-repo bot PRs** (`renovate[bot]`, `github-actions[bot]`) aren't auto-reviewed, but a maintainer opts them in via the `claude-review` label or `@claude review this PR` (see section 1). **Fork PRs (external contributors) and `dependabot[bot]` PRs can't be opted in** — GitHub withholds secrets for those events, so a review can't run regardless.
 - **Feature issues** don't have a dedicated label. For anything beyond the five `claude-fix:*` scopes, use an `@claude` mention on the issue with a clear description of the desired design. Opus opt-in (`deep`) is usually warranted.
 - **Cross-repo work** — the agent operates on one repo at a time. "Apply this change to harper and oauth" requires two invocations.
-- **Long-running async work** — each workflow has a timeout (15–25 min). If an ask is genuinely big, split it.
+- **Long-running async work** — each workflow has its own timeout (15–30 min depending on the workflow). If an ask is genuinely big, split it.
 - **Inline editing of closed / merged PRs** — the mention workflow only works on open PRs and issues.
 
 ---
@@ -160,10 +160,15 @@ The review prompts aren't hard-coded truth — they're a living checklist that g
 
 ### Where review outcomes get logged
 
-Every completed review posts a follow-up entry in `HarperFast/ai-review-log` (private, internal-only today). Each entry captures:
+The reusable workflows default `expected-review-author` to their normal posting identities (`claude[bot]` and `github-actions[bot]`). A consumer that deliberately supplies a different posting token can override that input without changing the shared scripts.
 
-- The repo and PR being reviewed, the model used, and the review job status
-- The finding count (or "no blockers") in the title
+Every successfully completed review posts a follow-up entry in `HarperFast/ai-review-log` (private, internal-only today). The logger accepts only the expected provider bot's comment with the exact Actions run/attempt/head binding; a successful review step without that surface fails visibly instead of leaving a green-but-unlogged run. Failed and cancelled attempts are called out in the Actions log but are not recorded as verdicts. Each entry captures:
+
+- The repo and PR being reviewed, the model used, prompt ref, and review job status
+- The Actions run ID and attempt, base SHA, reviewed head, and current head
+- Whether the reviewed head is current, superseded by a later push, or could not be re-verified
+- Whether the prior-thread snapshot was complete, partial, or unavailable
+- The finding count (or "no blockers" only for a successful current-head run) in the title
 - The verbatim review body as an issue body, labeled `repo:<short>`, `verdict:pending`, `phase:baseline`
 
 This is what gets swept periodically to see how the bot's judgment is holding up — are findings actually blocker-worthy? Is the review missing things we later catch in human review? Is a layer rule too loose or too strict?
