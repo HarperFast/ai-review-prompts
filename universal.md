@@ -42,7 +42,7 @@ This is per-PR memory. Cross-PR pattern learning happens via the workflow's log 
   - Other callers of a helper whose contract the PR just widened or narrowed.
   - One more entry point into an operation the PR is protecting (an additional delete/write/close route that bypasses the new check).
 
-  Name the specific sibling and what happens there, not "check for other cases" — an unlocatable finding is noise. If you looked and the siblings genuinely do not need the change, say so; that is useful review output.
+  Name the specific sibling and what happens there, not "check for other cases" — an unlocatable finding is noise. If you looked and the siblings genuinely do not need the change, record that in the log surface's `Surfaces verified` — confirming what you checked is tracing, not a PR comment (see Output discipline's "Never affirm").
 
 - **Public/private boundaries.** Are new exports from `src/index.ts` (or equivalent) intentional? Do they need JSDoc? Do internals stay scoped?
 - **Breaking changes.** Is this one? Is the version bumped? Is a migration path documented? For repos with maintenance branches (e.g. `v1.x`), does the fix need a backport?
