@@ -60,15 +60,15 @@ on:
         type: string
         default: 'claude-sonnet-4-6'
       effort:
-        description: 'Reasoning-effort level, passed to the CLI as --effort (low | medium | high | xhigh | max). Empty (the default) omits the flag and takes the CLI default. Higher effort has produced better reviews on large diffs; note xhigh requires Sonnet 5 / Opus 4.7+ — claude-sonnet-4-6 tops out at high/max.'
+        description: 'Reasoning-effort level, passed to the CLI as --effort (low | medium | high | xhigh | max). Empty (the default) omits the flag and takes the CLI default. xhigh requires Sonnet 5 / Opus 4.7+ — claude-sonnet-4-6 tops out at high/max.'
         type: string
         default: ''
       max-turns:
-        description: 'Per-review turn budget. 96 is the default — raised from the post-calibration 48, which large PRs exhausted outright (harper#1849 failed with "Reached maximum number of turns (48)"). The prompt budgets ~1 turn per changed file plus exploration; big-but-legitimate diffs need the headroom.'
+        description: 'Per-review turn budget. The review prompt budgets ~1 turn per changed file plus targeted exploration; bump for large repos with non-trivial cross-symbol exploration.'
         type: number
         default: 96
       timeout-minutes:
-        description: 'Job-level timeout for the review job. Headroom over the agent step; not the cost ceiling (max-turns is). Sized for the 96-turn budget at high effort.'
+        description: 'Job-level timeout for the review job. Headroom over the agent step; not the cost ceiling (max-turns is).'
         type: number
         default: 30
       expected-review-author:
