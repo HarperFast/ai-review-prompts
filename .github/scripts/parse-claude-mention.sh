@@ -18,7 +18,7 @@
 #
 # Outputs (to $GITHUB_OUTPUT):
 #   proceed=true|false
-#   model=claude-opus-5|claude-sonnet-4-6  (only when proceed=true)
+#   model=claude-opus-5|claude-sonnet-5  (only when proceed=true)
 set -uo pipefail
 
 if ! printf '%s' "$BODY" | grep -Pqz '\A\s*@claude\b'; then
@@ -31,7 +31,7 @@ if printf '%s' "$BODY" | grep -Piq '\bdeep\b'; then
   echo "model=claude-opus-5" >> "$GITHUB_OUTPUT"
   echo "Selected claude-opus-5 (deep requested)"
 else
-  echo "model=claude-sonnet-4-6" >> "$GITHUB_OUTPUT"
-  echo "Selected claude-sonnet-4-6 (default)"
+  echo "model=claude-sonnet-5" >> "$GITHUB_OUTPUT"
+  echo "Selected claude-sonnet-5 (default)"
 fi
 echo "proceed=true" >> "$GITHUB_OUTPUT"
