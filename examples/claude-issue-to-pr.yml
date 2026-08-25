@@ -89,7 +89,7 @@ jobs:
           # — not bots opening PRs. See examples/claude-review.yml for why
           # the review workflow needs the allowlist.
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-sonnet-5
             --max-turns 72
             # Tool allowlist — keep tight. See the allowlist comment in
             # examples/claude-mention.yml for why `Bash(npx:*)` is absent,

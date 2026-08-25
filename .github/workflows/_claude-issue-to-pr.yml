@@ -57,7 +57,7 @@ on:
       timeout-minutes:
         description: 'Job-level timeout for the work job. Headroom over the agent step; not the cost ceiling (max-turns is).'
         type: number
-        default: 25
+        default: 30
       setup-bun:
         description: 'Add an oven-sh/setup-bun step. Set true for repos whose scripts/tests run via bun (e.g. plugin repos like HarperFast/oauth). Harper core leaves this off.'
         type: boolean
@@ -192,7 +192,7 @@ jobs:
       # via the Task tool stays cheap no matter which main-loop model
       # is selected here. `claude-opus-5` is the bare model alias —
       # no date suffix.
-      AGENT_MODEL: ${{ (endsWith(github.event.label.name, ':bug') || endsWith(github.event.label.name, ':test')) && 'claude-opus-5' || 'claude-sonnet-4-6' }}
+      AGENT_MODEL: ${{ (endsWith(github.event.label.name, ':bug') || endsWith(github.event.label.name, ':test')) && 'claude-opus-5' || 'claude-sonnet-5' }}
     steps:
       - name: Checkout
         # Default shallow fetch (depth 1). The agent can commit and push
