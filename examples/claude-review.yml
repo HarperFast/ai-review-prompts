@@ -83,9 +83,10 @@ jobs:
           && github.event.label.name == 'claude-review'
           && github.event.sender.type != 'Bot')
     runs-on: ubuntu-latest
-    # 15 gives headroom without letting a runaway loop burn forever
-    # (claude-code-action's --max-turns is the real cost ceiling).
-    timeout-minutes: 15
+    # 30 gives headroom over the 96-turn budget without letting a
+    # runaway loop burn forever (claude-code-action's --max-turns is
+    # the real cost ceiling).
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -180,7 +181,11 @@ jobs:
           allowed_bots: claude
           claude_args: |
             --model claude-sonnet-4-6
-            --max-turns 24
+            --max-turns 96
+            # Optionally raise reasoning effort — better reviews on
+            # large diffs. claude-sonnet-4-6 supports low|medium|high|max;
+            # xhigh needs Sonnet 5 / Opus 4.7+.
+            # --effort high
             # This workflow is READ-ONLY by design — the agent reviews
             # and comments, it does not modify the repo. Git subcommands
             # are scoped individually to strictly read-only operations.

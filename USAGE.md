@@ -149,7 +149,7 @@ The label's suffix is a scope contract. Asks that would require judgment beyond 
 - **Same-repo bot PRs** (`renovate[bot]`, `github-actions[bot]`) aren't auto-reviewed, but a maintainer opts them in via the `claude-review` label or `@claude review this PR` (see section 1). **Fork PRs (external contributors) and `dependabot[bot]` PRs can't be opted in** — GitHub withholds secrets for those events, so a review can't run regardless.
 - **Feature issues** don't have a dedicated label. For anything beyond the five `claude-fix:*` scopes, use an `@claude` mention on the issue with a clear description of the desired design. Opus opt-in (`deep`) is usually warranted.
 - **Cross-repo work** — the agent operates on one repo at a time. "Apply this change to harper and oauth" requires two invocations.
-- **Long-running async work** — each workflow has a timeout (15–25 min). If an ask is genuinely big, split it.
+- **Long-running async work** — each workflow has a timeout (15–30 min). If an ask is genuinely big, split it.
 - **Inline editing of closed / merged PRs** — the mention workflow only works on open PRs and issues.
 
 ---
