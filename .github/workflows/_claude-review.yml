@@ -59,14 +59,18 @@ on:
         description: 'Model id passed to claude-code-action.'
         type: string
         default: 'claude-sonnet-4-6'
+      effort:
+        description: 'Reasoning-effort level, passed to the CLI as --effort (low | medium | high | xhigh | max). Empty (the default) omits the flag and takes the CLI default. Higher effort has produced better reviews on large diffs; note xhigh requires Sonnet 5 / Opus 4.7+ — claude-sonnet-4-6 tops out at high/max.'
+        type: string
+        default: ''
       max-turns:
-        description: 'Per-review turn budget. 48 is the post-calibration default; bump for large repos with non-trivial cross-symbol exploration.'
+        description: 'Per-review turn budget. 96 is the default — raised from the post-calibration 48, which large PRs exhausted outright (harper#1849 failed with "Reached maximum number of turns (48)"). The prompt budgets ~1 turn per changed file plus exploration; big-but-legitimate diffs need the headroom.'
         type: number
-        default: 48
+        default: 96
       timeout-minutes:
-        description: 'Job-level timeout for the review job. Headroom over the agent step; not the cost ceiling (max-turns is).'
+        description: 'Job-level timeout for the review job. Headroom over the agent step; not the cost ceiling (max-turns is). Sized for the 96-turn budget at high effort.'
         type: number
-        default: 15
+        default: 30
       expected-review-author:
         description: 'GitHub login that owns Claude review comments. Defaults to the live-verified Claude App identity; override if a caller deliberately posts through another token.'
         type: string
@@ -270,6 +274,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max-turns }}
+            ${{ inputs.effort != '' && format('--effort {0}', inputs.effort) || '' }}
             # `--allowedTools` is convenience pre-approval, not a
             # security boundary. Per claude-code-action's
             # `docs/configuration.md` (v1.0.110): "The base GitHub
