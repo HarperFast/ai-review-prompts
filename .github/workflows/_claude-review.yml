@@ -58,11 +58,11 @@ on:
       model:
         description: 'Model id passed to claude-code-action.'
         type: string
-        default: 'claude-sonnet-4-6'
+        default: 'claude-sonnet-5'
       effort:
-        description: 'Reasoning-effort level, passed to the CLI as --effort (low | medium | high | xhigh | max). Empty (the default) omits the flag and takes the CLI default. xhigh requires Sonnet 5 / Opus 4.7+ — claude-sonnet-4-6 tops out at high/max.'
+        description: 'Reasoning-effort level, passed to the CLI as --effort (low | medium | high | xhigh | max). Pass an empty string to omit the flag and take the CLI default. xhigh requires Sonnet 5 / Opus 4.7+ — callers pinning claude-sonnet-4-6 must drop to high/max.'
         type: string
-        default: ''
+        default: 'xhigh'
       max-turns:
         description: 'Per-review turn budget. The review prompt budgets ~1 turn per changed file plus targeted exploration; bump for large repos with non-trivial cross-symbol exploration.'
         type: number
