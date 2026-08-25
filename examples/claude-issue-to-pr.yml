@@ -41,7 +41,7 @@ jobs:
       github.event.issue.author_association) &&
       github.event.sender.type != 'Bot'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
@@ -89,8 +89,8 @@ jobs:
           # — not bots opening PRs. See examples/claude-review.yml for why
           # the review workflow needs the allowlist.
           claude_args: |
-            --model claude-sonnet-4-6
-            --max-turns 72
+            --model claude-sonnet-5
+            --max-turns 100
             # Tool allowlist — keep tight. See the allowlist comment in
             # examples/claude-mention.yml for why `Bash(npx:*)` is absent,
             # why `Bash(npm install)` (no-arg) is partial mitigation only,
