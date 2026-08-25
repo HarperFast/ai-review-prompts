@@ -50,6 +50,10 @@ on:
         description: 'SHA pin for HarperFast/skills (mounted at .harper-skills/ for the agent to consult shared best-practice rules).'
         type: string
         default: 'd2db99bb37a6dde868cbc5ac81ca4146be8956fb'  # 1.3.0 (2026-04-16)
+      effort:
+        description: 'Reasoning-effort level, passed to the CLI as --effort (low | medium | high | xhigh | max). Pass an empty string to omit the flag and take the CLI default. xhigh requires Sonnet 5 / Opus 4.7+.'
+        type: string
+        default: 'xhigh'
       max-turns:
         description: 'Per-invocation turn budget. Issue-to-PR does the most authoring work of the three modes (read, change, validate, push, PR-open) — keep this generous (100 default). A ceiling, not a target: small labels finish well under it, so a higher ceiling is harmless for them and saves the authoring-heavy labels from running out mid-task. Pair with the prompt''s "Working efficiently" guidance (delegate exploration to sub-agents) so the budget buys progress, not spelunking.'
         type: number
@@ -243,6 +247,7 @@ jobs:
             # Sonnet otherwise) — set in the work job's `env:` block.
             --model ${{ env.AGENT_MODEL }}
             --max-turns ${{ inputs.max-turns }}
+            ${{ inputs.effort != '' && format('--effort {0}', inputs.effort) || '' }}
             # `--allowedTools` is convenience pre-approval, not a
             # security boundary. Per claude-code-action's
             # `docs/configuration.md` (v1.0.110): "The base GitHub
