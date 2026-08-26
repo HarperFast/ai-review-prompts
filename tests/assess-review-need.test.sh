@@ -30,6 +30,8 @@ case "${STUB_MODE:-small}" in
 		printf '%s\n' '[{"filename":"package.json","additions":2,"deletions":1,"patch":"@@ -1,6 +1,7 @@\n {\n-  \"version\": \"2.5.0\",\n+  \"version\": \"2.5.1\",\n+  \"dependencies\": {\"left-pad\": \"^1.0.0\"},\n   \"name\": \"x\""},{"filename":"package-lock.json","additions":40,"deletions":2}]' ;;
 	null-fields)
 		printf '%s\n' '[{"filename":"assets/logo.png","additions":null,"deletions":null},{"filename":"src/tiny.ts","additions":3,"deletions":1}]' ;;
+	huge)
+		printf '%s\n' '[{"filename":"src/big.ts","additions":1600,"deletions":200}]' ;;
 	paginated)
 		printf '%s' '['
 		for i in $(seq 1 99); do printf '{"filename":"f%s.ts","additions":1,"deletions":0},' "$i"; done
@@ -43,8 +45,8 @@ run_assess() {
 	: > "$TMP/out"
 	STUB_MODE="$mode" PATH="$TMP/bin:$PATH" \
 		REPO=HarperFast/x PR_NUMBER=1 GITHUB_OUTPUT="$TMP/out" \
-		EFFORT="${EFFORT_OVERRIDE-xhigh}" EFFORT_SMALL="${EFFORT_SMALL_OVERRIDE-high}" \
-		SMALL_DIFF_LINES="${SMALL_DIFF_LINES_OVERRIDE-60}" \
+		EFFORT="${EFFORT_OVERRIDE-xhigh}" \
+		EFFORT_BY_SIZE="${EFFORT_BY_SIZE_OVERRIDE-$(printf '60 high\n1500 xhigh\n* max')}" \
 		SKIP_WHEN_ONLY="${SKIP_WHEN_ONLY_OVERRIDE-$(printf 'package-lock.json\nnpm-shrinkwrap.json\nyarn.lock\npnpm-lock.yaml\nbun.lockb\nCHANGELOG.md')}" \
 		bash "$SCRIPT" >/dev/null
 	RUN_STATUS=$?
@@ -54,11 +56,11 @@ out() { grep -m1 "^$1=" "$TMP/out" | cut -d= -f2-; }
 run_assess small
 assert_status "$RUN_STATUS" 0 "small diff exits successfully"
 assert_eq "$(out skip)" "false" "small diff is reviewed"
-assert_eq "$(out effort)" "high" "small diff tiers effort down"
+assert_eq "$(out effort)" "high" "small diff takes the first band"
 
 run_assess large
 assert_eq "$(out skip)" "false" "large diff is reviewed"
-assert_eq "$(out effort)" "xhigh" "large diff keeps full effort"
+assert_eq "$(out effort)" "xhigh" "mid-band diff gets the mid band"
 
 run_assess lockfile-only
 assert_eq "$(out skip)" "true" "lockfile-only diff is skipped"
@@ -87,8 +89,14 @@ EFFORT_OVERRIDE="" run_assess small
 assert_eq "$(out effort)" "" "empty effort input disables the flag and tiering"
 assert_eq "$(out skip)" "false" "empty effort input still reviews"
 
-EFFORT_SMALL_OVERRIDE="" run_assess small
-assert_eq "$(out effort)" "xhigh" "empty effort-small disables tiering only"
+EFFORT_BY_SIZE_OVERRIDE="" run_assess small
+assert_eq "$(out effort)" "xhigh" "empty effort-by-size disables laddering only"
+
+EFFORT_BY_SIZE_OVERRIDE=$(printf 'garbage') run_assess small
+assert_eq "$(out effort)" "xhigh" "malformed ladder fails open to the base effort"
+
+run_assess huge
+assert_eq "$(out effort)" "max" "past the last numeric band the catch-all applies"
 
 run_assess null-fields
 assert_status "$RUN_STATUS" 0 "null additions/deletions do not crash the script"

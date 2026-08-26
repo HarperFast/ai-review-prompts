@@ -6,11 +6,14 @@
 # Inputs (env):
 #   REPO              owner/repo of the PR
 #   PR_NUMBER         PR number
-#   EFFORT            effort for normal/large diffs ('' = omit the flag)
-#   EFFORT_SMALL      effort for small diffs ('' disables tiering)
-#   SMALL_DIFF_LINES  changed-line threshold at or under which
-#                     EFFORT_SMALL applies (skip-listed files excluded
-#                     from the count)
+#   EFFORT            fixed effort when EFFORT_BY_SIZE is empty
+#                     ('' = omit the flag)
+#   EFFORT_BY_SIZE    newline-separated '<max-lines> <level>' bands,
+#                     ascending, with an optional '* <level>' catch-all —
+#                     the first band whose max-lines covers the diff's
+#                     changed lines (skip-listed files excluded) picks
+#                     the effort. Empty disables laddering. When set,
+#                     EFFORT applies only past the last band.
 #   SKIP_WHEN_ONLY    newline-separated globs; when EVERY changed file
 #                     matches one, the review is skipped entirely
 #   GITHUB_OUTPUT     step-output file
@@ -116,13 +119,38 @@ if [ "$NON_PKG" = 0 ] && [ "$HAS_PKG" = 1 ]; then
   fi
 fi
 
-# --- effort tiering ----------------------------------------------------
+# --- effort ladder -----------------------------------------------------
 EFFORT_OUT="${EFFORT}"
 REASON="reviewable (${REVIEWABLE_LINES} changed lines outside skip globs)"
-if [ -n "${EFFORT}" ] && [ -n "${EFFORT_SMALL:-}" ] \
-  && [ "$REVIEWABLE_LINES" -le "${SMALL_DIFF_LINES:-0}" ]; then
-  EFFORT_OUT="${EFFORT_SMALL}"
-  REASON="small-diff (${REVIEWABLE_LINES} <= ${SMALL_DIFF_LINES} changed lines) — effort tiered down"
-fi
+# EFFORT='' is the omit-the-flag escape hatch; it overrides the ladder.
+[ -z "${EFFORT}" ] && EFFORT_BY_SIZE=""
+while IFS= read -r band; do
+  band="${band#"${band%%[![:space:]]*}"}"
+  band="${band%"${band##*[![:space:]]}"}"
+  [ -z "$band" ] && continue
+  max="${band%% *}"
+  level="${band#* }"
+  # Malformed band (no two fields, or non-numeric non-* threshold):
+  # fail open to EFFORT for the rest of the ladder.
+  if [ "$max" = "$band" ] || [ -z "$level" ]; then
+    REASON="reviewable (${REVIEWABLE_LINES} changed lines; malformed effort-by-size band ignored)"
+    break
+  fi
+  if [ "$max" = '*' ]; then
+    EFFORT_OUT="$level"
+    REASON="effort-by-size: ${REVIEWABLE_LINES} changed lines → ${level} (catch-all)"
+    break
+  fi
+  case "$max" in
+    ''|*[!0-9]*)
+      REASON="reviewable (${REVIEWABLE_LINES} changed lines; malformed effort-by-size band ignored)"
+      break ;;
+  esac
+  if [ "$REVIEWABLE_LINES" -le "$max" ]; then
+    EFFORT_OUT="$level"
+    REASON="effort-by-size: ${REVIEWABLE_LINES} changed lines <= ${max} → ${level}"
+    break
+  fi
+done <<< "${EFFORT_BY_SIZE:-}"
 
 emit false "${EFFORT_OUT}" "${REASON}"

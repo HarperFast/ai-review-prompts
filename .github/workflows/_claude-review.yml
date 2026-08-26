@@ -63,14 +63,13 @@ on:
         description: 'Reasoning-effort level, passed to the CLI as --effort (low | medium | high | xhigh | max). Pass an empty string to omit the flag and take the CLI default. xhigh requires Sonnet 5 / Opus 4.7+ — callers pinning claude-sonnet-4-6 must drop to high/max.'
         type: string
         default: 'xhigh'
-      effort-small:
-        description: 'Effort level for small diffs — changed lines at or under small-diff-lines, with skip-when-only files excluded from the count. Empty disables tiering. Ignored when effort is empty.'
+      effort-by-size:
+        description: 'Newline-separated "<max-lines> <level>" bands, ascending, with an optional "* <level>" catch-all — the first band whose max-lines covers the diff''s changed lines (skip-when-only files excluded from the count) picks the reasoning effort. When set, `effort` applies only past the last band. Empty disables laddering (every run uses `effort`).'
         type: string
-        default: 'high'
-      small-diff-lines:
-        description: 'Changed-line threshold at or under which effort-small applies.'
-        type: number
-        default: 60
+        default: |
+          60 high
+          1500 xhigh
+          * max
       debounce-seconds:
         description: 'Seconds to hold a synchronize-triggered run before the agent starts, so a follow-up push cancels it via the caller''s cancel-in-progress concurrency group instead of paying for a full review of an intermediate commit. 0 disables.'
         type: number
@@ -246,8 +245,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EFFORT: ${{ inputs.effort }}
-          EFFORT_SMALL: ${{ inputs.effort-small }}
-          SMALL_DIFF_LINES: ${{ inputs.small-diff-lines }}
+          EFFORT_BY_SIZE: ${{ inputs.effort-by-size }}
           SKIP_WHEN_ONLY: ${{ inputs.skip-when-only }}
         run: bash .ai-review-prompts/.github/scripts/assess-review-need.sh
 

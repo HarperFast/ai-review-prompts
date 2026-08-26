@@ -153,7 +153,7 @@ The label's suffix is a scope contract. Asks that would require judgment beyond 
 - **Cost gates on PR review** — the review reusables spend agent tokens only where they can matter:
   - **Draft PRs are not auto-reviewed.** Flipping to ready triggers the review (callers include `ready_for_review` in their trigger types); applying the `claude-review` / `gemini-review` label reviews a draft deliberately.
   - **Mechanical diffs are skipped before the agent starts** — lockfile-only, CHANGELOG-only, and version-only package.json bumps produce no run and no log entry (per-repo tunable via the `skip-when-only` input). The gate fails open: if the file list can't be read, the review runs.
-  - **Reasoning effort is tiered by diff size** — small diffs (≤ `small-diff-lines` changed lines, skip-listed files excluded) run at `effort-small` (default `high`); everything else at `effort` (default `xhigh`).
+  - **Reasoning effort scales with diff size** — the `effort-by-size` ladder (default: ≤60 changed lines → `high`, ≤1500 → `xhigh`, larger → `max`; skip-listed files excluded from the count) picks the effort per run. `effort` applies past the last band, and `effort: ''` omits the flag entirely. Callers pinning `claude-sonnet-4-6` must supply a 4-6-safe ladder (no `xhigh`).
   - **Push storms are debounced** — a `synchronize` run holds `debounce-seconds` (default 120) before the agent starts, so a follow-up push cancels it via the concurrency group instead of paying for a review of an intermediate commit.
 - **Inline editing of closed / merged PRs** — the mention workflow only works on open PRs and issues.
 

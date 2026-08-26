@@ -247,8 +247,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EFFORT: ''
-          EFFORT_SMALL: ''
-          SMALL_DIFF_LINES: '0'
+          EFFORT_BY_SIZE: ''
           SKIP_WHEN_ONLY: ${{ inputs.skip-when-only }}
         run: bash .ai-review-prompts/.github/scripts/assess-review-need.sh
 
