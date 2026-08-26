@@ -85,6 +85,12 @@ on:
           pnpm-lock.yaml
           bun.lockb
           CHANGELOG.md
+          */package-lock.json
+          */npm-shrinkwrap.json
+          */yarn.lock
+          */pnpm-lock.yaml
+          */bun.lockb
+          */CHANGELOG.md
       max-turns:
         description: 'Per-review turn budget. The review prompt budgets ~1 turn per changed file plus targeted exploration; bump for large repos with non-trivial cross-symbol exploration.'
         type: number
@@ -231,6 +237,10 @@ jobs:
         # silent skip. See the script header.
         id: assess
         if: steps.check.outputs.authorized == 'true'
+        # A hard script failure must not fail the job — empty outputs
+        # mean skip != 'true', so the review still runs (fail-open at
+        # the workflow level too).
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

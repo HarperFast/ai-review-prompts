@@ -36,7 +36,7 @@ emit() {
 
 # Up to 3 pages (300 files). A PR past that is unambiguously reviewable
 # and unambiguously not small.
-FILES_JSON=""
+PAGES=()
 for page in 1 2 3; do
   PAGE_JSON=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100&page=${page}" 2>/dev/null) || {
     emit false "${EFFORT}" "assess-unavailable (files API failed; fail-open)"
@@ -46,13 +46,14 @@ for page in 1 2 3; do
     emit false "${EFFORT}" "assess-unavailable (unparseable files payload; fail-open)"
     exit 0
   }
-  FILES_JSON=$(jq -s 'add' <(printf '%s' "${FILES_JSON:-[]}") <(printf '%s' "$PAGE_JSON"))
+  PAGES+=("$PAGE_JSON")
   [ "$COUNT" -lt 100 ] && break
   if [ "$page" = 3 ] && [ "$COUNT" = 100 ]; then
     emit false "${EFFORT}" "large-pr (>300 files)"
     exit 0
   fi
 done
+FILES_JSON=$(printf '%s\n' "${PAGES[@]}" | jq -s 'add')
 
 TOTAL=$(printf '%s' "$FILES_JSON" | jq 'length')
 if [ "$TOTAL" -eq 0 ]; then
@@ -61,16 +62,21 @@ if [ "$TOTAL" -eq 0 ]; then
 fi
 
 # --- vacuous-diff gate: every file matches a skip glob -----------------
+GLOBS=()
+while IFS= read -r glob; do
+  glob="${glob#"${glob%%[![:space:]]*}"}"
+  glob="${glob%"${glob##*[![:space:]]}"}"
+  [ -n "$glob" ] && GLOBS+=("$glob")
+done <<< "${SKIP_WHEN_ONLY:-}"
+
 matches_skip_glob() {
   local f="$1" glob
-  while IFS= read -r glob; do
-    glob="$(printf '%s' "$glob" | awk '{$1=$1;print}')"
-    [ -z "$glob" ] && continue
+  for glob in "${GLOBS[@]+"${GLOBS[@]}"}"; do
     # shellcheck disable=SC2254 — glob comes from workflow input on purpose
     case "$f" in
       $glob) return 0 ;;
     esac
-  done <<< "${SKIP_WHEN_ONLY:-}"
+  done
   return 1
 }
 
@@ -82,7 +88,7 @@ while IFS=$'\t' read -r fname changes; do
   fi
   ALL_SKIPPABLE=false
   REVIEWABLE_LINES=$((REVIEWABLE_LINES + changes))
-done < <(printf '%s' "$FILES_JSON" | jq -r '.[] | [.filename, (.additions + .deletions)] | @tsv')
+done < <(printf '%s' "$FILES_JSON" | jq -r '.[] | [.filename, ((.additions // 0) + (.deletions // 0))] | @tsv')
 
 if [ "$ALL_SKIPPABLE" = true ]; then
   emit true "" "only-mechanical-files (all files match skip-when-only)"
@@ -93,11 +99,12 @@ fi
 # Files limited to package.json + lockfiles, and every changed line in
 # package.json touches only the "version" field → a release bump with
 # nothing to review.
-NON_PKG=$(printf '%s' "$FILES_JSON" | jq -r '[.[] | .filename
-  | select(. != "package.json" and . != "package-lock.json"
-           and . != "npm-shrinkwrap.json" and . != "yarn.lock"
-           and . != "pnpm-lock.yaml" and . != "bun.lockb")] | length')
-HAS_PKG=$(printf '%s' "$FILES_JSON" | jq -r '[.[] | select(.filename == "package.json")] | length')
+read -r NON_PKG HAS_PKG < <(printf '%s' "$FILES_JSON" | jq -r '
+  [([.[] | .filename
+     | select(. != "package.json" and . != "package-lock.json"
+              and . != "npm-shrinkwrap.json" and . != "yarn.lock"
+              and . != "pnpm-lock.yaml" and . != "bun.lockb")] | length),
+   ([.[] | select(.filename == "package.json")] | length)] | @tsv' | tr "\t" " ")
 if [ "$NON_PKG" = 0 ] && [ "$HAS_PKG" = 1 ]; then
   PKG_PATCH=$(printf '%s' "$FILES_JSON" | jq -r '.[] | select(.filename == "package.json") | .patch // ""')
   NON_VERSION_CHANGES=$(printf '%s' "$PKG_PATCH" \

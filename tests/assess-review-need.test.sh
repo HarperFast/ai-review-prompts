@@ -28,6 +28,8 @@ case "${STUB_MODE:-small}" in
 		printf '%s\n' '[{"filename":"package.json","additions":1,"deletions":1,"patch":"@@ -1,5 +1,5 @@\n {\n-  \"version\": \"2.5.0\",\n+  \"version\": \"2.5.1\",\n   \"name\": \"x\""},{"filename":"package-lock.json","additions":2,"deletions":2}]' ;;
 	dep-change)
 		printf '%s\n' '[{"filename":"package.json","additions":2,"deletions":1,"patch":"@@ -1,6 +1,7 @@\n {\n-  \"version\": \"2.5.0\",\n+  \"version\": \"2.5.1\",\n+  \"dependencies\": {\"left-pad\": \"^1.0.0\"},\n   \"name\": \"x\""},{"filename":"package-lock.json","additions":40,"deletions":2}]' ;;
+	null-fields)
+		printf '%s\n' '[{"filename":"assets/logo.png","additions":null,"deletions":null},{"filename":"src/tiny.ts","additions":3,"deletions":1}]' ;;
 	paginated)
 		printf '%s' '['
 		for i in $(seq 1 99); do printf '{"filename":"f%s.ts","additions":1,"deletions":0},' "$i"; done
@@ -87,6 +89,11 @@ assert_eq "$(out skip)" "false" "empty effort input still reviews"
 
 EFFORT_SMALL_OVERRIDE="" run_assess small
 assert_eq "$(out effort)" "xhigh" "empty effort-small disables tiering only"
+
+run_assess null-fields
+assert_status "$RUN_STATUS" 0 "null additions/deletions do not crash the script"
+assert_eq "$(out skip)" "false" "null-field diff is reviewed"
+assert_eq "$(out effort)" "high" "null fields count as zero lines for tiering"
 
 run_assess paginated
 assert_eq "$(out skip)" "false" "pagination cap fails open to a review"

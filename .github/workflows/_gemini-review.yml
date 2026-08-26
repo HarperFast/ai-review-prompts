@@ -97,6 +97,16 @@ on:
           pnpm-lock.yaml
           bun.lockb
           CHANGELOG.md
+          */package-lock.json
+          */npm-shrinkwrap.json
+          */yarn.lock
+          */pnpm-lock.yaml
+          */bun.lockb
+          */CHANGELOG.md
+      debounce-seconds:
+        description: 'Seconds to hold a synchronize-triggered run before the review starts, so a follow-up push cancels it via the caller''s cancel-in-progress concurrency group. 0 disables. Mirrors _claude-review.yml.'
+        type: number
+        default: 120
     secrets:
       GEMINI_API_KEY:
         # Optional on purpose: Gemini coverage is opt-in per repo.
@@ -228,6 +238,10 @@ jobs:
         # Gemini leg (EFFORT empty). Fail-OPEN — see the script header.
         id: assess
         if: steps.check.outputs.authorized == 'true'
+        # A hard script failure must not fail the job — empty outputs
+        # mean skip != 'true', so the review still runs (fail-open at
+        # the workflow level too).
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -255,6 +269,12 @@ jobs:
       # too, though an extra grant there is harmless.)
 
     steps:
+      - name: Debounce rapid pushes
+        # Mirrors _claude-review.yml — a follow-up push cancels the run
+        # during this hold via the caller's concurrency group.
+        if: github.event.action == 'synchronize' && inputs.debounce-seconds > 0
+        run: sleep ${{ inputs.debounce-seconds }}
+
       - name: Checkout
         # Full history so the review agent can use `git blame` /
         # `git log` / `git diff <base>...HEAD` for the same context
