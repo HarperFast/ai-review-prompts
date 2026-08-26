@@ -150,6 +150,11 @@ The label's suffix is a scope contract. Asks that would require judgment beyond 
 - **Feature issues** don't have a dedicated label. For anything beyond the five `claude-fix:*` scopes, use an `@claude` mention on the issue with a clear description of the desired design. Opus opt-in (`deep`) is usually warranted.
 - **Cross-repo work** — the agent operates on one repo at a time. "Apply this change to harper and oauth" requires two invocations.
 - **Long-running async work** — each workflow has its own timeout (15–30 min depending on the workflow). If an ask is genuinely big, split it.
+- **Cost gates on PR review** — the review reusables spend agent tokens only where they can matter:
+  - **Draft PRs are not auto-reviewed.** Flipping to ready triggers the review (callers include `ready_for_review` in their trigger types); applying the `claude-review` / `gemini-review` label reviews a draft deliberately.
+  - **Mechanical diffs are skipped before the agent starts** — lockfile-only, CHANGELOG-only, and version-only package.json bumps produce no run and no log entry (per-repo tunable via the `skip-when-only` input). The gate fails open: if the file list can't be read, the review runs.
+  - **Reasoning effort is tiered by diff size** — small diffs (≤ `small-diff-lines` changed lines, skip-listed files excluded) run at `effort-small` (default `high`); everything else at `effort` (default `xhigh`).
+  - **Push storms are debounced** — a `synchronize` run holds `debounce-seconds` (default 120) before the agent starts, so a follow-up push cancels it via the concurrency group instead of paying for a review of an intermediate commit.
 - **Inline editing of closed / merged PRs** — the mention workflow only works on open PRs and issues.
 
 ---

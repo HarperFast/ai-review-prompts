@@ -63,6 +63,28 @@ on:
         description: 'Reasoning-effort level, passed to the CLI as --effort (low | medium | high | xhigh | max). Pass an empty string to omit the flag and take the CLI default. xhigh requires Sonnet 5 / Opus 4.7+ — callers pinning claude-sonnet-4-6 must drop to high/max.'
         type: string
         default: 'xhigh'
+      effort-small:
+        description: 'Effort level for small diffs — changed lines at or under small-diff-lines, with skip-when-only files excluded from the count. Empty disables tiering. Ignored when effort is empty.'
+        type: string
+        default: 'high'
+      small-diff-lines:
+        description: 'Changed-line threshold at or under which effort-small applies.'
+        type: number
+        default: 60
+      debounce-seconds:
+        description: 'Seconds to hold a synchronize-triggered run before the agent starts, so a follow-up push cancels it via the caller''s cancel-in-progress concurrency group instead of paying for a full review of an intermediate commit. 0 disables.'
+        type: number
+        default: 120
+      skip-when-only:
+        description: 'Newline-separated filename globs. When EVERY changed file matches one, the run is skipped as mechanical — no review, no log entry (the pre-run form of the `<!-- review:no-log -->` discipline). Version-only package.json bumps (with lockfiles) are always skipped regardless of this list.'
+        type: string
+        default: |
+          package-lock.json
+          npm-shrinkwrap.json
+          yarn.lock
+          pnpm-lock.yaml
+          bun.lockb
+          CHANGELOG.md
       max-turns:
         description: 'Per-review turn budget. The review prompt budgets ~1 turn per changed file plus targeted exploration; bump for large repos with non-trivial cross-symbol exploration.'
         type: number
@@ -142,11 +164,17 @@ jobs:
     # (Members: Read scope only) and use it ONLY in this job — the
     # review job uses the default `GITHUB_TOKEN`, so the org-read
     # capability never reaches the agent step.
+    # Draft PRs are not reviewed (every push to a WIP branch would buy a
+    # full agent run of in-progress code). Flipping to ready reviews it
+    # (callers add `ready_for_review` to their trigger types), and the
+    # `claude-review` label opts a draft in deliberately.
     if: |
-      github.event.action != 'labeled' ||
-      github.event.label.name == 'claude-review'
+      (github.event.action != 'labeled' ||
+       github.event.label.name == 'claude-review') &&
+      (github.event.pull_request.draft == false ||
+       github.event.action == 'labeled')
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 2
     permissions:
       # `contents: read` so we can fetch the consumer repo's
       # `.github/CODEOWNERS` via the GitHub API (the auth script
@@ -154,9 +182,13 @@ jobs:
       # to the repo's default branch, so a malicious PR can't
       # tamper with the trust set), and check out this repo
       # (ai-review-prompts) for the auth script itself.
+      # `pull-requests: read` for the assess step's files-API call.
       contents: read
+      pull-requests: read
     outputs:
       authorized: ${{ steps.check.outputs.authorized }}
+      skip: ${{ steps.assess.outputs.skip }}
+      effort: ${{ steps.assess.outputs.effort }}
     steps:
       - name: Mint org-read token
         id: app-token
@@ -174,6 +206,7 @@ jobs:
           path: .ai-review-prompts
           sparse-checkout: |
             .github/scripts/authorize-ai-workflow.sh
+            .github/scripts/assess-review-need.sh
           sparse-checkout-cone-mode: false
 
       - name: Check authorization
@@ -190,9 +223,29 @@ jobs:
             ${{ github.actor }}
         run: bash .ai-review-prompts/.github/scripts/authorize-ai-workflow.sh
 
+      - name: Assess review need
+        # Cost gates, decided from the PR's file list before any agent
+        # spend: skip vacuous diffs entirely (lockfile-only, version-
+        # bump-only), and tier reasoning effort down on small diffs.
+        # Fail-OPEN — an assess failure buys a full review, never a
+        # silent skip. See the script header.
+        id: assess
+        if: steps.check.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EFFORT: ${{ inputs.effort }}
+          EFFORT_SMALL: ${{ inputs.effort-small }}
+          SMALL_DIFF_LINES: ${{ inputs.small-diff-lines }}
+          SKIP_WHEN_ONLY: ${{ inputs.skip-when-only }}
+        run: bash .ai-review-prompts/.github/scripts/assess-review-need.sh
+
   review:
     needs: authorize
-    if: needs.authorize.outputs.authorized == 'true'
+    if: |
+      needs.authorize.outputs.authorized == 'true' &&
+      needs.authorize.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -201,6 +254,15 @@ jobs:
       id-token: write # required by claude-code-action even with API-key auth
 
     steps:
+      - name: Debounce rapid pushes
+        # During this hold a follow-up push cancels the run via the
+        # caller's cancel-in-progress concurrency group, so a push storm
+        # costs runner-sleep instead of one full review per intermediate
+        # commit. Non-synchronize events (opened / reopened / labeled /
+        # ready_for_review) start immediately.
+        if: github.event.action == 'synchronize' && inputs.debounce-seconds > 0
+        run: sleep ${{ inputs.debounce-seconds }}
+
       - name: Checkout
         # Full history so the review agent can use `git blame` / `git log`
         # / `git diff <base>...HEAD` for context — who wrote a line, how
@@ -274,7 +336,7 @@ jobs:
           claude_args: |
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max-turns }}
-            ${{ inputs.effort != '' && format('--effort {0}', inputs.effort) || '' }}
+            ${{ needs.authorize.outputs.effort != '' && format('--effort {0}', needs.authorize.outputs.effort) || '' }}
             # `--allowedTools` is convenience pre-approval, not a
             # security boundary. Per claude-code-action's
             # `docs/configuration.md` (v1.0.110): "The base GitHub

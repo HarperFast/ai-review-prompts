@@ -87,6 +87,16 @@ on:
         description: 'SHA pin for HarperFast/ai-review-prompts (layer files + scripts). REQUIRED; pass the same SHA the caller uses in its `uses:` ref. Same constraint as _claude-review.yml — `github.workflow_ref` resolves to the CALLER''s ref in `workflow_call` context, not the called workflow''s ref.'
         type: string
         required: true
+      skip-when-only:
+        description: 'Newline-separated filename globs. When EVERY changed file matches one, the run is skipped as mechanical — no review, no log entry. Version-only package.json bumps (with lockfiles) are always skipped regardless of this list. Mirrors _claude-review.yml.'
+        type: string
+        default: |
+          package-lock.json
+          npm-shrinkwrap.json
+          yarn.lock
+          pnpm-lock.yaml
+          bun.lockb
+          CHANGELOG.md
     secrets:
       GEMINI_API_KEY:
         # Optional on purpose: Gemini coverage is opt-in per repo.
@@ -144,16 +154,23 @@ jobs:
     # the review with a notice instead of failing the workflow.
     # See the GEMINI_API_KEY comment in the secrets block above for
     # the rationale.
+    # Draft PRs are not reviewed; the `gemini-review` label opts a
+    # draft in deliberately (mirrors _claude-review.yml).
     if: |
-      github.event.action != 'labeled' ||
-      github.event.label.name == 'gemini-review'
+      (github.event.action != 'labeled' ||
+       github.event.label.name == 'gemini-review') &&
+      (github.event.pull_request.draft == false ||
+       github.event.action == 'labeled')
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 2
     permissions:
+      # `pull-requests: read` for the assess step's files-API call.
       contents: read
+      pull-requests: read
     outputs:
       authorized: ${{ steps.check.outputs.authorized }}
       has-gemini-key: ${{ steps.gemini-key.outputs.has-key }}
+      skip: ${{ steps.assess.outputs.skip }}
     steps:
       - name: Mint org-read token
         id: app-token
@@ -171,6 +188,7 @@ jobs:
           path: .ai-review-prompts
           sparse-checkout: |
             .github/scripts/authorize-ai-workflow.sh
+            .github/scripts/assess-review-need.sh
           sparse-checkout-cone-mode: false
 
       - name: Check authorization
@@ -204,9 +222,28 @@ jobs:
             echo "has-key=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Assess review need
+        # Vacuous-diff gate (lockfile-only, version-bump-only) shared
+        # with _claude-review.yml. Effort tiering doesn't apply to the
+        # Gemini leg (EFFORT empty). Fail-OPEN — see the script header.
+        id: assess
+        if: steps.check.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EFFORT: ''
+          EFFORT_SMALL: ''
+          SMALL_DIFF_LINES: '0'
+          SKIP_WHEN_ONLY: ${{ inputs.skip-when-only }}
+        run: bash .ai-review-prompts/.github/scripts/assess-review-need.sh
+
   review:
     needs: authorize
-    if: needs.authorize.outputs.authorized == 'true' && needs.authorize.outputs.has-gemini-key == 'true'
+    if: |
+      needs.authorize.outputs.authorized == 'true' &&
+      needs.authorize.outputs.has-gemini-key == 'true' &&
+      needs.authorize.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:

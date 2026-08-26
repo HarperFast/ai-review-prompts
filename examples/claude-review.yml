@@ -27,7 +27,9 @@ on:
     #
     # To re-run on subsequent commits to a labeled PR, remove and
     # re-apply the label (the `labeled` event is what re-fires this).
-    types: [opened, synchronize, reopened, labeled]
+    # `ready_for_review` fires the review when a draft flips ready —
+    # drafts themselves are not auto-reviewed (see the job `if:` below).
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -75,7 +77,8 @@ jobs:
     # opted in via an `@claude review this PR` mention (separate workflow).
     if: >-
       (vars.CLAUDE_ALWAYS_ON == 'true'
-        && github.event.action != 'labeled' && (
+        && github.event.action != 'labeled'
+        && github.event.pull_request.draft == false && (
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
           github.event.pull_request.author_association)
         || github.event.pull_request.user.login == 'claude[bot]'))
