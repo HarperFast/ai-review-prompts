@@ -46,26 +46,34 @@ on:
     # repo. `vars.*` can't be read in `on:` (only in a job `if:`), so
     # the trigger lists the union and the `review` job gates on the
     # variable below.
-    types: [opened, synchronize, reopened, labeled]
+    # `ready_for_review` fires the review when a draft flips ready.
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
 
-concurrency:
-  group: gemini-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# No concurrency block: cancellation is owned by the reusable's review
+# job (job-level group, engaged only after authorization), so an
+# unauthorized or skipped event can never cancel a legitimate review.
 
 jobs:
   review:
     # Always-on toggle. This repo sets the `GEMINI_ALWAYS_ON` repo
     # variable to `true` so the dogfood reviewer keeps running on every
-    # PR; otherwise it's opt-in via the `gemini-review` label. The
-    # caller does NOT name the label — the reusable's authorize job is
-    # the single source of truth for both WHO is admitted (CODEOWNERS
-    # trust set; the labeler, not the author, on `labeled`) AND which
-    # label opts in. Trade-off: GitHub can't filter label names in
-    # `on:`, so an unrelated label add still starts this workflow and
-    # the reusable then skips it — a cosmetic skipped-run, the price of
-    # keeping the label in exactly one place. Canonical caller shape;
-    # see USAGE.md "Always-on toggle".
-    if: ${{ vars.GEMINI_ALWAYS_ON == 'true' || github.event.action == 'labeled' }}
+    # PR; otherwise it's opt-in via the `gemini-review` label. The gate
+    # names the label so unrelated label adds don't even start the job
+    # (and can't share the cancelling concurrency group above); WHO is
+    # admitted remains the reusable authorize job's call (CODEOWNERS
+    # trust set; the labeler, not the author, on `labeled`). See
+    # USAGE.md "Always-on toggle".
+    if: >-
+      (github.event.action == 'labeled'
+        && github.event.label.name == 'gemini-review'
+        && github.event.sender.type != 'Bot')
+      || (github.event.action != 'labeled'
+          && vars.GEMINI_ALWAYS_ON == 'true'
+          && github.event.pull_request.draft == false
+          && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+            github.event.pull_request.author_association))
+      || (github.event.action == 'ready_for_review'
+          && contains(github.event.pull_request.labels.*.name, 'gemini-review'))
     # Same-commit local ref — see header. No `@<ref>` syntax (that's
     # for cross-repo refs, and doesn't accept expressions). The
     # reusable's `Clone review prompts` step then checks out the
