@@ -73,9 +73,14 @@ assert_contains "$GROUP_LINE" "github.event.pull_request.author_association" \
   "always-on cancelling arm carries the job gate's author-trust guard"
 
 # --- thin-caller pattern: dogfood carries NO workflow-level group ------
+# A bare `concurrency:` key without cancel-in-progress still REPLACES a
+# pending run in the same group, so the structural key itself must be
+# absent — not merely the cancel flag.
 DOGFOOD="$(cat "$DIR/../.github/workflows/gemini-review.yml")"
+assert_eq "$(grep -cE '^concurrency:' "$DIR/../.github/workflows/gemini-review.yml" || true)" "0" \
+  "gemini dogfood thin caller has no workflow-level concurrency key at all"
 assert_not_contains "$DOGFOOD" "cancel-in-progress" \
-  "gemini dogfood thin caller has no workflow-level concurrency"
+  "gemini dogfood thin caller has no cancel-in-progress anywhere"
 
 # --- reusables own cancellation at the review job, post-authorization --
 for wf in _claude-review _gemini-review; do
@@ -85,7 +90,18 @@ for wf in _claude-review _gemini-review; do
     "$wf review job carries the job-level cancellation group"
   assert_contains "$JOB_CONC" "cancel-in-progress: true" \
     "$wf review job cancels superseded in-flight reviews"
+  # The group's safety property IS the gating: pin needs + the gates so
+  # the job (and its cancellation power) cannot engage pre-authorization.
+  assert_contains "$JOB_CONC" "needs: authorize" \
+    "$wf review job is ordered after authorize"
+  assert_contains "$JOB_CONC" "needs.authorize.outputs.authorized == 'true'" \
+    "$wf review job gates on authorization"
+  assert_contains "$JOB_CONC" "needs.authorize.outputs.skip != 'true'" \
+    "$wf review job gates on the mechanical-diff skip"
 done
+G_JOB="$(awk '/^  review:/,/^    steps:/' "$DIR/../.github/workflows/_gemini-review.yml")"
+assert_contains "$G_JOB" "needs.authorize.outputs.has-gemini-key == 'true'" \
+  "_gemini-review review job gates on the key check"
 
 G_IF_LINE="$(grep -E "^    if: .*GEMINI_ALWAYS_ON" "$DIR/../.github/workflows/gemini-review.yml")"
 assert_contains "$G_IF_LINE" "github.event.label.name == 'gemini-review'" \
