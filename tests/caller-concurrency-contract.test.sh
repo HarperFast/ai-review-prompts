@@ -56,4 +56,17 @@ assert_contains "$GROUP_LINE" "github.event.pull_request.draft == false" \
 assert_contains "$GROUP_LINE" "github.event.pull_request.author_association" \
   "always-on cancelling arm carries the job gate's author-trust guard"
 
+# --- sibling: this repo's own gemini-review.yml dogfood caller ---------
+G_GROUP_LINE="$(grep -E '^  group: ' "$DIR/../.github/workflows/gemini-review.yml")"
+assert_contains "$G_GROUP_LINE" "&& 'eligible' || github.run_id" \
+  "gemini dogfood caller scopes its cancelling group"
+assert_contains "$G_GROUP_LINE" "github.event.label.name == 'gemini-review'" \
+  "gemini dogfood labeled arm requires its own label"
+assert_contains "$G_GROUP_LINE" "github.event.action != 'ready_for_review'" \
+  "gemini dogfood always-on arm excludes ready_for_review"
+assert_contains "$G_GROUP_LINE" "github.event.pull_request.draft == false" \
+  "gemini dogfood cancelling arm carries the draft guard"
+assert_contains "$G_GROUP_LINE" "github.event.pull_request.author_association" \
+  "gemini dogfood cancelling arm carries the author-trust guard"
+
 t_summary
