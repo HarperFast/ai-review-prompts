@@ -12,8 +12,9 @@ name: Claude PR Review (reusable)
 #         # bot-authored PR. The labeler — not the bot PR author —
 #         # satisfies the auth gate.
 #         # Useful for renovate / dependabot PRs that would otherwise
-#         # be silently skipped.
-#         types: [opened, synchronize, reopened, labeled]
+#         # be silently skipped. `ready_for_review` fires the review
+#         # when a draft flips ready.
+#         types: [opened, synchronize, reopened, ready_for_review, labeled]
 #     concurrency:
 #       # Eligibility-scoped — see USAGE.md "Always-on toggle" and
 #       # examples/claude-review.yml for the canonical caller shape:
