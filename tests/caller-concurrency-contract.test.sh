@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# Event-matrix contract for the canonical caller (examples/claude-review.yml).
+# Concurrency contract for the two caller patterns:
 #
-# The caller has two predicates that must relate as cancelling ⊆ running:
-#   - the concurrency group predicate (which runs may CANCEL an in-flight
-#     review — GitHub applies cancel-in-progress at queue time, before
-#     any job `if:`),
-#   - the review job `if:` (which runs REVIEW).
+#   STANDALONE (examples/claude-review.yml): the caller's gate IS the
+#   authorization, so the caller carries an eligibility-scoped
+#   workflow-level group whose cancelling predicate must stay a strict
+#   subset of the job gate (cancel-in-progress applies at queue time,
+#   before any job `if:`).
+#
+#   THIN CALLER (this repo's gemini-review.yml dogfood, and the fleet
+#   callers): NO workflow-level concurrency — cancellation is owned by
+#   the reusable's review job (job-level group, engaged only after
+#   authorize/skip/key gates pass), so an unauthorized event can never
+#   cancel a legitimate review.
 #
 # Matrix this test pins (the bugs it prevents were all found in review —
 # harper#2348 / harper#2353 / harper#2357 and their harper-pro twins):
@@ -66,20 +72,20 @@ assert_contains "$GROUP_LINE" "github.event.pull_request.draft == false" \
 assert_contains "$GROUP_LINE" "github.event.pull_request.author_association" \
   "always-on cancelling arm carries the job gate's author-trust guard"
 
-# --- sibling: this repo's own gemini-review.yml dogfood caller ---------
-G_GROUP_LINE="$(grep -E '^  group: ' "$DIR/../.github/workflows/gemini-review.yml")"
-assert_contains "$G_GROUP_LINE" "&& 'eligible' || github.run_id" \
-  "gemini dogfood caller scopes its cancelling group"
-assert_not_contains "$G_GROUP_LINE" "github.event.label.name" \
-  "gemini dogfood: no labeled arm in the cancelling set"
-assert_contains "$G_GROUP_LINE" "github.event.action != 'labeled'" \
-  "gemini dogfood cancelling arm excludes labeled events"
-assert_contains "$G_GROUP_LINE" "github.event.action != 'ready_for_review'" \
-  "gemini dogfood cancelling arm excludes ready_for_review"
-assert_contains "$G_GROUP_LINE" "github.event.pull_request.draft == false" \
-  "gemini dogfood cancelling arm carries the draft guard"
-assert_contains "$G_GROUP_LINE" "github.event.pull_request.author_association" \
-  "gemini dogfood cancelling arm carries the author-trust guard"
+# --- thin-caller pattern: dogfood carries NO workflow-level group ------
+DOGFOOD="$(cat "$DIR/../.github/workflows/gemini-review.yml")"
+assert_not_contains "$DOGFOOD" "cancel-in-progress" \
+  "gemini dogfood thin caller has no workflow-level concurrency"
+
+# --- reusables own cancellation at the review job, post-authorization --
+for wf in _claude-review _gemini-review; do
+  prov="${wf#_}"; prov="${prov%-review}"
+  JOB_CONC="$(awk '/^  review:/,/^    steps:/' "$DIR/../.github/workflows/$wf.yml")"
+  assert_contains "$JOB_CONC" "group: ${prov}-review-\${{ github.repository }}-\${{ github.event.pull_request.number || github.run_id }}" \
+    "$wf review job carries the job-level cancellation group"
+  assert_contains "$JOB_CONC" "cancel-in-progress: true" \
+    "$wf review job cancels superseded in-flight reviews"
+done
 
 G_IF_LINE="$(grep -E "^    if: .*GEMINI_ALWAYS_ON" "$DIR/../.github/workflows/gemini-review.yml")"
 assert_contains "$G_IF_LINE" "github.event.label.name == 'gemini-review'" \

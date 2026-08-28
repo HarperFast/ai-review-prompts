@@ -32,6 +32,11 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
 
 concurrency:
+  # STANDALONE-CALLER PATTERN: this workflow calls claude-code-action
+  # directly, so its own gate is the authorization and the caller must
+  # scope its cancelling group itself. Thin callers of the reusables
+  # need NO concurrency block — the reusable's review job owns
+  # cancellation post-authorization.
   # The group key ends in 'eligible' only for events that will actually
   # produce a review (the CANCELLING set); every other event gets its
   # own run_id group and can never cancel an in-flight review. GitHub

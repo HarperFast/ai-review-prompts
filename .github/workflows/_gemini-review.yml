@@ -20,14 +20,8 @@ name: Gemini PR Review (reusable)
 #         # the job on the variable below. `ready_for_review` fires the
 #         # review when a draft flips ready.
 #         types: [opened, synchronize, reopened, ready_for_review, labeled]
-#     concurrency:
-#       # Eligibility-scoped — see USAGE.md "Always-on toggle" and
-#       # examples/claude-review.yml for the canonical caller shape:
-#       # only events that will produce a review share the cancelling
-#       # group; labeled / ready_for_review events run without
-#       # cancelling (queue-time cancellation precedes job `if:`).
-#       group: gemini-review-${{ github.event.pull_request.number }}-<eligibility (see example)>
-#       cancel-in-progress: true
+#     # NO concurrency block: cancellation is owned by this reusable's
+#     # review job (job-level group, engaged only after authorization).
 #     jobs:
 #       review:
 #         # Always-on toggle. The gate names the label so unrelated
@@ -111,7 +105,7 @@ on:
           */bun.lockb
           */CHANGELOG.md
       debounce-seconds:
-        description: 'Seconds to hold a synchronize-triggered run before the review starts, so a follow-up push cancels it via the caller''s cancel-in-progress concurrency group. 0 disables. Mirrors _claude-review.yml.'
+        description: 'Seconds to hold a synchronize-triggered run before the review starts, so a follow-up push cancels it via this job''s cancel-in-progress concurrency group. 0 disables. Mirrors _claude-review.yml.'
         type: number
         default: 120
     secrets:
@@ -264,6 +258,19 @@ jobs:
       needs.authorize.outputs.authorized == 'true' &&
       needs.authorize.outputs.has-gemini-key == 'true' &&
       needs.authorize.outputs.skip != 'true'
+    concurrency:
+      # Cancellation boundary. Job-level concurrency engages when THIS
+      # job is queued — after authorize (PR author AND actor), the skip
+      # gate, and (Gemini) the key check have all passed — so an event
+      # that will not produce a review can never cancel one. This is
+      # what caller-side eligibility predicates could only approximate:
+      # authorize's CODEOWNERS/actor trust is invisible to a caller
+      # expression. Thin callers therefore need NO workflow-level
+      # concurrency block; a newer authorized run supersedes an older
+      # one here (the debounce contract), and unauthorized or skipped
+      # runs never enter the group.
+      group: gemini-review-${{ github.repository }}-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -277,7 +284,7 @@ jobs:
     steps:
       - name: Debounce rapid pushes
         # Mirrors _claude-review.yml — a follow-up push cancels the run
-        # during this hold via the caller's concurrency group.
+        # during this hold via this job's concurrency group.
         if: github.event.action == 'synchronize' && inputs.debounce-seconds > 0
         run: sleep ${{ inputs.debounce-seconds }}
 
