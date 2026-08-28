@@ -50,6 +50,8 @@ assert_contains "$IF_BLOCK" "github.event.pull_request.draft == false" \
   "always-on arm skips drafts"
 assert_not_contains "$IF_BLOCK" "github.event.action != 'ready_for_review'" \
   "the job gate never excludes ready_for_review — that split is the concurrency predicate's"
+assert_contains "$IF_BLOCK" "github.event.action != 'labeled'" \
+  "the always-on arm admits non-label events (ready_for_review included)"
 
 # --- relation ----------------------------------------------------------
 # Every arm that can cancel must also run. The cancelling set is ONE
@@ -88,5 +90,7 @@ assert_contains "$G_IF_LINE" "contains(github.event.pull_request.labels.*.name, 
   "gemini dogfood ready arm requires the persisted opt-in label"
 assert_not_contains "$G_IF_LINE" "github.event.action != 'ready_for_review'" \
   "gemini dogfood job gate never excludes ready_for_review"
+assert_contains "$G_IF_LINE" "github.event.action != 'labeled'" \
+  "gemini dogfood always-on arm admits non-label events"
 
 t_summary
