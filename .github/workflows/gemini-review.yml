@@ -76,7 +76,7 @@ jobs:
     # admitted remains the reusable authorize job's call (CODEOWNERS
     # trust set; the labeler, not the author, on `labeled`). See
     # USAGE.md "Always-on toggle".
-    if: ${{ (github.event.action == 'labeled' && github.event.label.name == 'gemini-review') || (github.event.action != 'labeled' && vars.GEMINI_ALWAYS_ON == 'true') || (github.event.action == 'ready_for_review' && contains(github.event.pull_request.labels.*.name, 'gemini-review')) }}
+    if: ${{ (github.event.action == 'labeled' && github.event.label.name == 'gemini-review') || (github.event.action != 'labeled' && vars.GEMINI_ALWAYS_ON == 'true' && github.event.pull_request.draft == false) || (github.event.action == 'ready_for_review' && contains(github.event.pull_request.labels.*.name, 'gemini-review')) }}
     # Same-commit local ref — see header. No `@<ref>` syntax (that's
     # for cross-repo refs, and doesn't accept expressions). The
     # reusable's `Clone review prompts` step then checks out the

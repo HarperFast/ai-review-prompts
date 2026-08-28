@@ -50,10 +50,11 @@ assert_contains "$IF_BLOCK" "github.event.pull_request.draft == false" \
   "always-on arm skips drafts"
 
 # --- relation ----------------------------------------------------------
-# Every arm that can cancel must also run: the labeled arm appears in
-# both; the always-on cancelling arm is the job gate's always-on arm
-# minus ready_for_review. Assert the cancelling always-on arm carries
-# BOTH exclusions so it stays strictly narrower.
+# Every arm that can cancel must also run. The cancelling set is ONE
+# arm — always-on trusted-author non-draft pushes — strictly narrower
+# than the job gate (which additionally runs labeled and label-opted
+# ready_for_review events, without cancel rights). Assert the
+# cancelling arm carries both event exclusions and both guards.
 assert_contains "$GROUP_LINE" "github.event.action != 'labeled' && github.event.action != 'ready_for_review' && vars.CLAUDE_ALWAYS_ON == 'true'" \
   "always-on cancelling arm excludes labeled and ready_for_review"
 assert_contains "$GROUP_LINE" "github.event.pull_request.draft == false" \
