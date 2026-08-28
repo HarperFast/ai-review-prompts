@@ -103,7 +103,7 @@ G_JOB="$(awk '/^  review:/,/^    steps:/' "$DIR/../.github/workflows/_gemini-rev
 assert_contains "$G_JOB" "needs.authorize.outputs.has-gemini-key == 'true'" \
   "_gemini-review review job gates on the key check"
 
-G_IF_LINE="$(grep -E "^    if: .*GEMINI_ALWAYS_ON" "$DIR/../.github/workflows/gemini-review.yml")"
+G_IF_LINE="$(awk '/^    if: >-/,/^    uses:/' "$DIR/../.github/workflows/gemini-review.yml")"
 assert_contains "$G_IF_LINE" "github.event.label.name == 'gemini-review'" \
   "gemini dogfood job gate requires its own label on labeled events"
 assert_contains "$G_IF_LINE" "github.event.action == 'ready_for_review'" \
