@@ -8,7 +8,7 @@
 #   - the review job `if:` (which runs REVIEW).
 #
 # Matrix this test pins (the bugs it prevents were all found in review —
-# harper#2348 / harper#2353 / harper#2357 / harper-pro#766–#768):
+# harper#2348 / harper#2353 / harper#2357 and their harper-pro twins):
 #   labeled(claude-review, human): cancels + runs
 #   labeled(anything else):        neither (must not share the group)
 #   ready_for_review:              RUNS (label-opted, or always-on via the
@@ -50,6 +50,10 @@ assert_contains "$IF_BLOCK" "github.event.pull_request.draft == false" \
 # minus ready_for_review. Assert the cancelling always-on arm carries
 # BOTH exclusions so it stays strictly narrower.
 assert_contains "$GROUP_LINE" "github.event.action != 'labeled' && github.event.action != 'ready_for_review' && vars.CLAUDE_ALWAYS_ON == 'true'" \
-  "always-on cancelling arm is the running arm minus ready_for_review"
+  "always-on cancelling arm excludes labeled and ready_for_review"
+assert_contains "$GROUP_LINE" "github.event.pull_request.draft == false" \
+  "always-on cancelling arm carries the job gate's draft guard"
+assert_contains "$GROUP_LINE" "github.event.pull_request.author_association" \
+  "always-on cancelling arm carries the job gate's author-trust guard"
 
 t_summary
