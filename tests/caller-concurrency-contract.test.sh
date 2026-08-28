@@ -69,4 +69,12 @@ assert_contains "$G_GROUP_LINE" "github.event.pull_request.draft == false" \
 assert_contains "$G_GROUP_LINE" "github.event.pull_request.author_association" \
   "gemini dogfood cancelling arm carries the author-trust guard"
 
+G_IF_LINE="$(grep -E "^    if: .*GEMINI_ALWAYS_ON" "$DIR/../.github/workflows/gemini-review.yml")"
+assert_contains "$G_IF_LINE" "github.event.label.name == 'gemini-review'" \
+  "gemini dogfood job gate requires its own label on labeled events"
+assert_contains "$G_IF_LINE" "github.event.action == 'ready_for_review'" \
+  "gemini dogfood job gate runs label-opted ready_for_review"
+assert_contains "$G_IF_LINE" "contains(github.event.pull_request.labels.*.name, 'gemini-review')" \
+  "gemini dogfood ready arm requires the persisted opt-in label"
+
 t_summary
