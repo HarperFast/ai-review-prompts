@@ -15,7 +15,12 @@ name: Claude PR Review (reusable)
 #         # be silently skipped.
 #         types: [opened, synchronize, reopened, labeled]
 #     concurrency:
-#       group: claude-review-${{ github.event.pull_request.number }}
+#       # Eligibility-scoped — see USAGE.md "Always-on toggle" and
+#       # examples/claude-review.yml for the canonical caller shape:
+#       # only events that will produce a review share the cancelling
+#       # group; labeled / ready_for_review events run without
+#       # cancelling (queue-time cancellation precedes job `if:`).
+#       group: claude-review-${{ github.event.pull_request.number }}-<eligibility (see example)>
 #       cancel-in-progress: true
 #     jobs:
 #       review:

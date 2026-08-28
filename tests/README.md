@@ -39,6 +39,9 @@ repeatable while the draft PR supplies the live workflow check.
   results
 - `workflow-contract.test.sh` — static cross-file assertions that keep the
   prompts, reusable workflows, calibration prefetch, and logger aligned
+- `caller-concurrency-contract.test.sh` — pins the caller event matrix
+  (which events may cancel an in-flight review vs merely run one) on the
+  example caller and the dogfood Gemini caller
 
 `find-prior-review-comment.sh` and the network-facing main path of
 `post-inline-comments.sh` remain covered by live review dogfood; their pure
