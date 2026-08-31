@@ -308,10 +308,7 @@ jobs:
         # FAIL this run rather than reviewing a stale commit — a newer
         # event's run covers the tip, the failed check lands on the
         # superseded (old) head, and the log step refuses failed runs
-        # as verdicts. Behavior-tested in
-        # tests/drop-superseded-run.test.sh (match / stale / null /
-        # API-failure); failing needs no extra token grant, and the
-        # contract test forbids any workflow-administration scope here.
+        # as verdicts. Failing needs no extra token grant.
         #
         # Known residual, accepted: a push landing between the assess
         # step's LAST freshness read and this job's queue entry can
@@ -842,7 +839,10 @@ jobs:
         # they thread the same issue), and which run-notes file to
         # pick up. See the script's docs for the dual-provider
         # title ping-pong caveat.
-        if: always()
+        # `hashFiles` guards the drop-superseded path: that step fails
+        # BEFORE any checkout, so the logger script isn't on disk and a
+        # bare always() would end the run with a misleading exit-127.
+        if: always() && hashFiles('.ai-review-prompts/.github/scripts/**') != ''
         env:
           GH_TOKEN: ${{ github.token }}
           AI_REVIEW_LOG_TOKEN: ${{ secrets.AI_REVIEW_LOG_TOKEN }}

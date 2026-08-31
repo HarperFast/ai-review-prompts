@@ -18,6 +18,8 @@ if [[ "$URL" != *"/files"* ]] && [[ "$URL" == */pulls/1 ]]; then
 		null-head) printf 'null\n' ;;
 		stale-late)
 			if [ -f "$STUB_STATE/meta-called" ]; then printf 'bbbbbbbb\n'; else touch "$STUB_STATE/meta-called"; printf 'aaaaaaaa\n'; fi ;;
+		paginated-stale)
+			if [ -f "$STUB_STATE/meta-called" ]; then printf 'bbbbbbbb\n'; else touch "$STUB_STATE/meta-called"; printf 'aaaaaaaa\n'; fi ;;
 		*) printf 'aaaaaaaa\n' ;;
 	esac
 	exit 0
@@ -43,7 +45,7 @@ case "${STUB_MODE:-small}" in
 		printf '%s\n' '[{"filename":"assets/logo.png","additions":null,"deletions":null},{"filename":"src/tiny.ts","additions":3,"deletions":1}]' ;;
 	huge)
 		printf '%s\n' '[{"filename":"src/big.ts","additions":1600,"deletions":200}]' ;;
-	paginated)
+	paginated|paginated-stale)
 		printf '%s' '['
 		for i in $(seq 1 99); do printf '{"filename":"f%s.ts","additions":1,"deletions":0},' "$i"; done
 		printf '%s\n' '{"filename":"f100.ts","additions":1,"deletions":0}]' ;;
@@ -133,6 +135,10 @@ assert_contains "$(out reason)" "stale-event" "stale reason names the gate"
 
 HEAD_SHA_OVERRIDE=aaaaaaaa run_assess null-head
 assert_eq "$(out fresh)" "true" "a null live head fails open to fresh, not to stale"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess paginated-stale
+assert_eq "$(out fresh)" "false" "the large-pr early exit still catches a moved head"
+assert_contains "$(out reason)" "stale-event" "the early-exit stale reason names the gate"
 
 HEAD_SHA_OVERRIDE=aaaaaaaa run_assess stale-late
 assert_eq "$(out fresh)" "false" "a head that moves DURING assessment is caught by the late re-check"

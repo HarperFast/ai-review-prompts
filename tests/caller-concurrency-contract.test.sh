@@ -116,8 +116,6 @@ for wf in _claude-review _gemini-review; do
     "$wf checks the guard script out before invoking it"
   assert_contains "$WINDOW" "EVENT_HEAD: \${{ github.event.pull_request.head.sha }}" \
     "$wf drop step wires the event head into the guard"
-  # Every safety wire pinned individually — removing any one of these
-  # restores the stale-run failure while the rest stay green:
   assert_contains "$FULL_WF" "HEAD_SHA: \${{ github.event.pull_request.head.sha }}" \
     "$wf assess step wires the event head for the pre-queue gate"
   assert_contains "$FULL_WF" "fresh: \${{ steps.assess.outputs.fresh }}" \

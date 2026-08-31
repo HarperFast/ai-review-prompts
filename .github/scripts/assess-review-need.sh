@@ -66,22 +66,31 @@ check_fresh() {  # exits the script with fresh=false when the head moved
 }
 check_fresh
 
+# Every path that ADMITS a review (skip=false) must confirm freshness
+# as its last act — early exits included, or a push landing during the
+# file fetches reopens the stale-admission window on exactly those
+# paths (large PRs, API hiccups).
+emit_reviewable() {  # <effort> <reason>
+  check_fresh
+  emit false "$1" "$2"
+}
+
 # Up to 3 pages (300 files). A PR past that is unambiguously reviewable
 # and unambiguously not small.
 PAGES=()
 for page in 1 2 3; do
   PAGE_JSON=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100&page=${page}" 2>/dev/null) || {
-    emit false "${EFFORT}" "assess-unavailable (files API failed; fail-open)"
+    emit_reviewable "${EFFORT}" "assess-unavailable (files API failed; fail-open)"
     exit 0
   }
   COUNT=$(printf '%s' "$PAGE_JSON" | jq 'length' 2>/dev/null) || {
-    emit false "${EFFORT}" "assess-unavailable (unparseable files payload; fail-open)"
+    emit_reviewable "${EFFORT}" "assess-unavailable (unparseable files payload; fail-open)"
     exit 0
   }
   PAGES+=("$PAGE_JSON")
   [ "$COUNT" -lt 100 ] && break
   if [ "$page" = 3 ] && [ "$COUNT" = 100 ]; then
-    emit false "${EFFORT}" "large-pr (>300 files)"
+    emit_reviewable "${EFFORT}" "large-pr (>300 files)"
     exit 0
   fi
 done
@@ -182,10 +191,4 @@ while IFS= read -r band; do
   fi
 done <<< "${EFFORT_BY_SIZE:-}"
 
-# Re-check freshness as LATE as possible — the file-list calls and
-# assessment above take real time, and the admission decision should
-# bound the stale window at authorize-exit -> queue, not assess-start
-# -> queue.
-check_fresh
-
-emit false "${EFFORT_OUT}" "${REASON}"
+emit_reviewable "${EFFORT_OUT}" "${REASON}"
