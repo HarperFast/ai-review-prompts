@@ -54,7 +54,9 @@ emit() {
 FRESH=true
 if [ -n "${HEAD_SHA:-}" ]; then
   LIVE_HEAD=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null) || LIVE_HEAD=""
-  if [ -n "$LIVE_HEAD" ] && [ "$LIVE_HEAD" != "$HEAD_SHA" ]; then
+  # `--jq` prints the literal string "null" for a missing field — treat
+  # it as unreadable (fail-open), not as a differing head.
+  if [ -n "$LIVE_HEAD" ] && [ "$LIVE_HEAD" != "null" ] && [ "$LIVE_HEAD" != "$HEAD_SHA" ]; then
     FRESH=false
     emit false "" "stale-event (head moved ${HEAD_SHA} -> ${LIVE_HEAD}; not admitted to the cancelling group)"
     exit 0

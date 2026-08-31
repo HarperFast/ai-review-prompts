@@ -317,7 +317,7 @@ jobs:
           EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           LIVE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null || echo "")
-          if [ -n "$LIVE" ] && [ "$LIVE" != "$EVENT_HEAD" ]; then
+          if [ -n "$LIVE" ] && [ "$LIVE" != "null" ] && [ "$LIVE" != "$EVENT_HEAD" ]; then
             echo "::error::Superseded (head moved ${EVENT_HEAD} -> ${LIVE}); failing instead of reviewing a stale head. The tip is covered by the newer event's run — or, if this run cancelled it in the residual reorder window, by the next event."
             exit 1
           fi

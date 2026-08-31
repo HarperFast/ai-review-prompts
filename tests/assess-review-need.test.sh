@@ -15,6 +15,7 @@ if [[ "$URL" != *"/files"* ]] && [[ "$URL" == */pulls/1 ]]; then
 	case "${STUB_MODE:-small}" in
 		meta-fail) exit 1 ;;
 		stale-head) printf 'bbbbbbbb\n' ;;
+		null-head) printf 'null\n' ;;
 		*) printf 'aaaaaaaa\n' ;;
 	esac
 	exit 0
@@ -126,6 +127,9 @@ HEAD_SHA_OVERRIDE=aaaaaaaa run_assess stale-head
 assert_status "$RUN_STATUS" 0 "stale event exits successfully"
 assert_eq "$(out fresh)" "false" "moved live head reports stale"
 assert_contains "$(out reason)" "stale-event" "stale reason names the gate"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess null-head
+assert_eq "$(out fresh)" "true" "a null live head fails open to fresh, not to stale"
 
 HEAD_SHA_OVERRIDE=aaaaaaaa run_assess meta-fail
 assert_eq "$(out fresh)" "true" "unreadable live head fails open to fresh"
