@@ -103,11 +103,19 @@ for wf in _claude-review _gemini-review; do
   # the authorize->queue window drops itself instead of reviewing.
   assert_contains "$JOB_CONC" "needs.authorize.outputs.fresh != 'false'" \
     "$wf review job refuses admission to stale events"
+  # Ordering pinned: the drop step must sit between the debounce and
+  # the checkout, inside the review job — presence elsewhere (e.g.
+  # moved above the debounce, un-checking its window) must fail.
+  WINDOW="$(awk '/name: Debounce rapid pushes/,/name: Checkout/' "$DIR/../.github/workflows/$wf.yml")"
+  assert_contains "$WINDOW" "Drop superseded run" \
+    "$wf drop step sits between debounce and checkout"
+  assert_contains "$WINDOW" "exit 1" \
+    "$wf superseded run fails rather than proceeding"
   FULL_WF="$(cat "$DIR/../.github/workflows/$wf.yml")"
-  assert_contains "$FULL_WF" "Drop superseded run" \
-    "$wf carries the post-acquire superseded self-cancel"
-  assert_contains "$FULL_WF" "gh run cancel" \
-    "$wf superseded step cancels its own run"
+  assert_not_contains "$FULL_WF" "actions: write" \
+    "$wf grants no workflow-administration scope to the review job"
+  assert_not_contains "$FULL_WF" "gh run cancel" \
+    "$wf superseded handling needs no cancel grant"
 done
 G_JOB="$(awk '/^  review:/,/^    steps:/' "$DIR/../.github/workflows/_gemini-review.yml")"
 assert_contains "$G_JOB" "needs.authorize.outputs.has-gemini-key == 'true'" \

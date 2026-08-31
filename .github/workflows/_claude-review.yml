@@ -276,8 +276,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      # `actions: write` solely for the superseded self-cancel below.
-      actions: write
       id-token: write # required by claude-code-action even with API-key auth
 
     steps:
@@ -294,8 +292,21 @@ jobs:
         # Post-acquire freshness check (the pre-queue gate lives in the
         # authorize job's assess step): if the PR head moved between
         # authorization and this job acquiring the concurrency slot,
-        # cancel THIS run rather than reviewing a stale commit — a
-        # newer admitted run is either in flight or about to be.
+        # FAIL this run rather than reviewing a stale commit — a newer
+        # event's run covers the tip, the failed check lands on the
+        # superseded (old) head, and the log step refuses failed runs
+        # as verdicts. Failing needs no extra token grant — an earlier
+        # design cancelled its own run via the API, which meant
+        # carrying a workflow-administration scope into the agent
+        # step's token; the contract test forbids that scope here.
+        #
+        # Known residual, accepted: freshness is read moments before
+        # queueing, so a push landing in that gap (or a lagged read)
+        # can still admit a stale run that cancels a newer one at
+        # queue entry and then fails here — the tip is left unreviewed
+        # until its next event, visibly (cancelled + failed checks).
+        # The window is seconds wide; closing it fully needs
+        # re-dispatch, tracked in ai-review-prompts#92.
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -304,9 +315,8 @@ jobs:
         run: |
           LIVE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null || echo "")
           if [ -n "$LIVE" ] && [ "$LIVE" != "$EVENT_HEAD" ]; then
-            echo "::notice::Superseded (head moved ${EVENT_HEAD} -> ${LIVE}); cancelling this run."
-            gh run cancel "${GITHUB_RUN_ID}" -R "${REPO}"
-            sleep 120
+            echo "::error::Superseded (head moved ${EVENT_HEAD} -> ${LIVE}); failing instead of reviewing a stale head. The newer event's own run covers the tip."
+            exit 1
           fi
 
       - name: Checkout
