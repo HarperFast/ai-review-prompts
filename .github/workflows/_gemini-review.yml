@@ -182,6 +182,7 @@ jobs:
       authorized: ${{ steps.check.outputs.authorized }}
       has-gemini-key: ${{ steps.gemini-key.outputs.has-key }}
       skip: ${{ steps.assess.outputs.skip }}
+      fresh: ${{ steps.assess.outputs.fresh }}
     steps:
       - name: Mint org-read token
         id: app-token
@@ -247,6 +248,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EFFORT: ''
           EFFORT_BY_SIZE: ''
           SKIP_WHEN_ONLY: ${{ inputs.skip-when-only }}
@@ -257,7 +259,8 @@ jobs:
     if: |
       needs.authorize.outputs.authorized == 'true' &&
       needs.authorize.outputs.has-gemini-key == 'true' &&
-      needs.authorize.outputs.skip != 'true'
+      needs.authorize.outputs.skip != 'true' &&
+      needs.authorize.outputs.fresh != 'false'
     concurrency:
       # Cancellation boundary. Job-level concurrency engages when THIS
       # job is queued — after authorize (PR author AND actor), the skip
@@ -276,6 +279,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      # `actions: write` solely for the superseded self-cancel below.
+      actions: write
       # (no id-token: write — that was only for run-gemini-cli's GCP
       # OIDC path, dropped in #56. We authenticate the CLI with
       # GEMINI_API_KEY. Callers may drop it from their gemini-review.yml
@@ -287,6 +292,25 @@ jobs:
         # during this hold via this job's concurrency group.
         if: github.event.action == 'synchronize' && inputs.debounce-seconds > 0
         run: sleep ${{ inputs.debounce-seconds }}
+
+      - name: Drop superseded run
+        # Post-acquire freshness check (the pre-queue gate lives in the
+        # authorize job's assess step): if the PR head moved between
+        # authorization and this job acquiring the concurrency slot,
+        # cancel THIS run rather than reviewing a stale commit — a
+        # newer admitted run is either in flight or about to be.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          LIVE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null || echo "")
+          if [ -n "$LIVE" ] && [ "$LIVE" != "$EVENT_HEAD" ]; then
+            echo "::notice::Superseded (head moved ${EVENT_HEAD} -> ${LIVE}); cancelling this run."
+            gh run cancel "${GITHUB_RUN_ID}" -R "${REPO}"
+            sleep 120
+          fi
 
       - name: Checkout
         # Full history so the review agent can use `git blame` /

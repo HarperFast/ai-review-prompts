@@ -6,6 +6,9 @@
 # Inputs (env):
 #   REPO              owner/repo of the PR
 #   PR_NUMBER         PR number
+#   HEAD_SHA          the event's head SHA; compared against the PR's
+#                     live head for the freshness output (empty skips
+#                     the check and reports fresh)
 #   EFFORT            fixed effort when EFFORT_BY_SIZE is empty
 #                     ('' = omit the flag)
 #   EFFORT_BY_SIZE    newline-separated '<max-lines> <level>' bands,
@@ -21,6 +24,9 @@
 # Outputs (to $GITHUB_OUTPUT):
 #   skip    true | false
 #   effort  effort level the review should run at ('' = omit the flag)
+#   fresh   true | false — false only when the PR's live head is known
+#           to differ from HEAD_SHA (stale event; the review job must
+#           not be admitted to the cancelling concurrency group)
 #   reason  one-line explanation for the run log
 #
 # Fail-OPEN by design: any API or parse failure proceeds with a full
@@ -32,10 +38,28 @@ emit() {
   {
     printf 'skip=%s\n' "$1"
     printf 'effort=%s\n' "$2"
+    printf 'fresh=%s\n' "${FRESH}"
     printf 'reason=%s\n' "$3"
   } >> "$GITHUB_OUTPUT"
-  echo "assess-review-need: skip=$1 effort=$2 reason=$3"
+  echo "assess-review-need: skip=$1 effort=$2 fresh=${FRESH} reason=$3"
 }
+
+# --- freshness: is this event still the PR's head? ---------------------
+# A stale run admitted to the review job could cancel a NEWER in-flight
+# review at queue time (GitHub does not order concurrency-group entry).
+# Deciding freshness here — before the review job queues — keeps stale
+# runs out of the cancelling group entirely. Fail-OPEN: an unreadable
+# live head reports fresh (the post-acquire re-check in the review job
+# is the second line of defense).
+FRESH=true
+if [ -n "${HEAD_SHA:-}" ]; then
+  LIVE_HEAD=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null) || LIVE_HEAD=""
+  if [ -n "$LIVE_HEAD" ] && [ "$LIVE_HEAD" != "$HEAD_SHA" ]; then
+    FRESH=false
+    emit false "" "stale-event (head moved ${HEAD_SHA} -> ${LIVE_HEAD}; not admitted to the cancelling group)"
+    exit 0
+  fi
+fi
 
 # Up to 3 pages (300 files). A PR past that is unambiguously reviewable
 # and unambiguously not small.
