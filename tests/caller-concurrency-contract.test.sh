@@ -85,6 +85,7 @@ assert_not_contains "$DOGFOOD" "cancel-in-progress" \
 # --- reusables own cancellation at the review job, post-authorization --
 for wf in _claude-review _gemini-review; do
   prov="${wf#_}"; prov="${prov%-review}"
+  FULL_WF="$(cat "$DIR/../.github/workflows/$wf.yml")"
   JOB_CONC="$(awk '/^  review:/,/^    steps:/' "$DIR/../.github/workflows/$wf.yml")"
   assert_contains "$JOB_CONC" "group: ${prov}-review-\${{ github.repository }}-\${{ github.event.pull_request.number || github.run_id }}" \
     "$wf review job carries the job-level cancellation group"
@@ -106,12 +107,21 @@ for wf in _claude-review _gemini-review; do
   # Ordering pinned: the drop step must sit between the debounce and
   # the checkout, inside the review job — presence elsewhere (e.g.
   # moved above the debounce, un-checking its window) must fail.
-  WINDOW="$(awk '/name: Debounce rapid pushes/,/name: Checkout/' "$DIR/../.github/workflows/$wf.yml")"
+  WINDOW="$(awk '/name: Debounce rapid pushes/,/name: Checkout$/' "$DIR/../.github/workflows/$wf.yml")"
   assert_contains "$WINDOW" "Drop superseded run" \
     "$wf drop step sits between debounce and checkout"
-  assert_contains "$WINDOW" "exit 1" \
-    "$wf superseded run fails rather than proceeding"
-  FULL_WF="$(cat "$DIR/../.github/workflows/$wf.yml")"
+  assert_contains "$WINDOW" "drop-superseded-run.sh" \
+    "$wf drop step invokes the behavior-tested guard script"
+  assert_contains "$WINDOW" "Sparse-checkout the superseded-run guard" \
+    "$wf checks the guard script out before invoking it"
+  assert_contains "$WINDOW" "EVENT_HEAD: \${{ github.event.pull_request.head.sha }}" \
+    "$wf drop step wires the event head into the guard"
+  # Every safety wire pinned individually — removing any one of these
+  # restores the stale-run failure while the rest stay green:
+  assert_contains "$FULL_WF" "HEAD_SHA: \${{ github.event.pull_request.head.sha }}" \
+    "$wf assess step wires the event head for the pre-queue gate"
+  assert_contains "$FULL_WF" "fresh: \${{ steps.assess.outputs.fresh }}" \
+    "$wf authorize maps the assess freshness output"
   assert_not_contains "$FULL_WF" "actions: write" \
     "$wf grants no workflow-administration scope to the review job"
   assert_not_contains "$FULL_WF" "gh run cancel" \

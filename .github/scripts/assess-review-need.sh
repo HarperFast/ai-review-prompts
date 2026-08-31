@@ -52,16 +52,19 @@ emit() {
 # live head reports fresh (the post-acquire re-check in the review job
 # is the second line of defense).
 FRESH=true
-if [ -n "${HEAD_SHA:-}" ]; then
-  LIVE_HEAD=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null) || LIVE_HEAD=""
+check_fresh() {  # exits the script with fresh=false when the head moved
+  [ -n "${HEAD_SHA:-}" ] || return 0
+  local live
+  live=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null) || live=""
   # `--jq` prints the literal string "null" for a missing field — treat
   # it as unreadable (fail-open), not as a differing head.
-  if [ -n "$LIVE_HEAD" ] && [ "$LIVE_HEAD" != "null" ] && [ "$LIVE_HEAD" != "$HEAD_SHA" ]; then
+  if [ -n "$live" ] && [ "$live" != "null" ] && [ "$live" != "$HEAD_SHA" ]; then
     FRESH=false
-    emit false "" "stale-event (head moved ${HEAD_SHA} -> ${LIVE_HEAD}; not admitted to the cancelling group)"
+    emit false "" "stale-event (head moved ${HEAD_SHA} -> ${live}; not admitted to the cancelling group)"
     exit 0
   fi
-fi
+}
+check_fresh
 
 # Up to 3 pages (300 files). A PR past that is unambiguously reviewable
 # and unambiguously not small.
@@ -178,5 +181,11 @@ while IFS= read -r band; do
     break
   fi
 done <<< "${EFFORT_BY_SIZE:-}"
+
+# Re-check freshness as LATE as possible — the file-list calls and
+# assessment above take real time, and the admission decision should
+# bound the stale window at authorize-exit -> queue, not assess-start
+# -> queue.
+check_fresh
 
 emit false "${EFFORT_OUT}" "${REASON}"

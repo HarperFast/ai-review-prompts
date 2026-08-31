@@ -16,6 +16,8 @@ if [[ "$URL" != *"/files"* ]] && [[ "$URL" == */pulls/1 ]]; then
 		meta-fail) exit 1 ;;
 		stale-head) printf 'bbbbbbbb\n' ;;
 		null-head) printf 'null\n' ;;
+		stale-late)
+			if [ -f "$STUB_STATE/meta-called" ]; then printf 'bbbbbbbb\n'; else touch "$STUB_STATE/meta-called"; printf 'aaaaaaaa\n'; fi ;;
 		*) printf 'aaaaaaaa\n' ;;
 	esac
 	exit 0
@@ -54,7 +56,8 @@ chmod +x "$TMP/bin/gh"
 run_assess() {
 	local mode="$1"; shift
 	: > "$TMP/out"
-	STUB_MODE="$mode" PATH="$TMP/bin:$PATH" \
+	rm -rf "$TMP/state"; mkdir -p "$TMP/state"
+	STUB_MODE="$mode" STUB_STATE="$TMP/state" PATH="$TMP/bin:$PATH" \
 		REPO=HarperFast/x PR_NUMBER=1 GITHUB_OUTPUT="$TMP/out" \
 		HEAD_SHA="${HEAD_SHA_OVERRIDE-}" \
 		EFFORT="${EFFORT_OVERRIDE-xhigh}" \
@@ -130,6 +133,9 @@ assert_contains "$(out reason)" "stale-event" "stale reason names the gate"
 
 HEAD_SHA_OVERRIDE=aaaaaaaa run_assess null-head
 assert_eq "$(out fresh)" "true" "a null live head fails open to fresh, not to stale"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess stale-late
+assert_eq "$(out fresh)" "false" "a head that moves DURING assessment is caught by the late re-check"
 
 HEAD_SHA_OVERRIDE=aaaaaaaa run_assess meta-fail
 assert_eq "$(out fresh)" "true" "unreadable live head fails open to fresh"

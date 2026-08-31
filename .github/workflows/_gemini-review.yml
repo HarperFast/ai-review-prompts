@@ -291,6 +291,16 @@ jobs:
         if: github.event.action == 'synchronize' && inputs.debounce-seconds > 0
         run: sleep ${{ inputs.debounce-seconds }}
 
+      - name: Sparse-checkout the superseded-run guard
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: HarperFast/ai-review-prompts
+          ref: ${{ inputs.ai-review-prompts-ref }}
+          path: .ai-review-prompts-guard
+          sparse-checkout: |
+            .github/scripts/drop-superseded-run.sh
+          sparse-checkout-cone-mode: false
+
       - name: Drop superseded run
         # Post-acquire freshness check (the pre-queue gate lives in the
         # authorize job's assess step): if the PR head moved between
@@ -298,29 +308,23 @@ jobs:
         # FAIL this run rather than reviewing a stale commit — a newer
         # event's run covers the tip, the failed check lands on the
         # superseded (old) head, and the log step refuses failed runs
-        # as verdicts. Failing needs no extra token grant — an earlier
-        # design cancelled its own run via the API, which meant
-        # carrying a workflow-administration scope into the agent
-        # step's token; the contract test forbids that scope here.
+        # as verdicts. Behavior-tested in
+        # tests/drop-superseded-run.test.sh (match / stale / null /
+        # API-failure); failing needs no extra token grant, and the
+        # contract test forbids any workflow-administration scope here.
         #
-        # Known residual, accepted: freshness is read moments before
-        # queueing, so a push landing in that gap (or a lagged read)
-        # can still admit a stale run that cancels a newer one at
-        # queue entry and then fails here — the tip is left unreviewed
-        # until its next event, visibly (cancelled + failed checks).
-        # The window is seconds wide; closing it fully needs
-        # re-dispatch, tracked in ai-review-prompts#92.
+        # Known residual, accepted: a push landing between the assess
+        # step's LAST freshness read and this job's queue entry can
+        # still admit a stale run that cancels a newer one at queue
+        # entry and then fails here — the tip is left unreviewed until
+        # its next event, visibly (cancelled + failed checks). Closing
+        # it fully needs re-dispatch, tracked in ai-review-prompts#92.
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          LIVE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null || echo "")
-          if [ -n "$LIVE" ] && [ "$LIVE" != "null" ] && [ "$LIVE" != "$EVENT_HEAD" ]; then
-            echo "::error::Superseded (head moved ${EVENT_HEAD} -> ${LIVE}); failing instead of reviewing a stale head. The tip is covered by the newer event's run — or, if this run cancelled it in the residual reorder window, by the next event."
-            exit 1
-          fi
+        run: bash .ai-review-prompts-guard/.github/scripts/drop-superseded-run.sh
 
       - name: Checkout
         # Full history so the review agent can use `git blame` /
