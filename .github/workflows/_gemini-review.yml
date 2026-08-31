@@ -305,10 +305,13 @@ jobs:
         # Post-acquire freshness check (the pre-queue gate lives in the
         # authorize job's assess step): if the PR head moved between
         # authorization and this job acquiring the concurrency slot,
-        # FAIL this run rather than reviewing a stale commit — a newer
-        # event's run covers the tip, the failed check lands on the
-        # superseded (old) head, and the log step refuses failed runs
-        # as verdicts. Failing needs no extra token grant.
+        # FAIL this run rather than reviewing a stale commit. The
+        # failed check lands on the superseded (old) head and the log
+        # step refuses failed runs as verdicts; the tip is usually
+        # covered by the newer event's own run, but in the residual
+        # reorder window that run may itself have been cancelled — the
+        # error message names the re-trigger options. Failing needs no
+        # extra token grant.
         #
         # Known residual, accepted: a push landing between the assess
         # step's LAST freshness read and this job's queue entry can
