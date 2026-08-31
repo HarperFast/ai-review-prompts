@@ -11,14 +11,14 @@
 # Inputs (env):
 #   REPO        owner/repo of the PR
 #   PR_NUMBER   PR number
-#   EVENT_HEAD  the head SHA the triggering event carried
+#   HEAD_SHA  the head SHA the triggering event carried
 set -uo pipefail
 
 LIVE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null) || LIVE=""
 # `--jq` prints the literal string "null" for a missing field — treat
 # it as unreadable (fail-open), not as a differing head.
-if [ -n "$LIVE" ] && [ "$LIVE" != "null" ] && [ "$LIVE" != "${EVENT_HEAD}" ]; then
-  echo "::error::Superseded (head moved ${EVENT_HEAD} -> ${LIVE}); failing instead of reviewing a stale head. The tip is usually covered by the newer event's own run; if that run shows as cancelled (the residual reorder window), re-trigger a review — push, re-apply the opt-in label, or re-run the newer run — since a final pre-merge push has no next event."
+if [ -n "$LIVE" ] && [ "$LIVE" != "null" ] && [ "$LIVE" != "${HEAD_SHA}" ]; then
+  echo "::error::Superseded (head moved ${HEAD_SHA} -> ${LIVE}); failing instead of reviewing a stale head. The tip is usually covered by the newer event's own run; if that run shows as cancelled (the residual reorder window), re-trigger a review — push, re-apply the opt-in label, or re-run the newer run — since a final pre-merge push has no next event."
   exit 1
 fi
 exit 0

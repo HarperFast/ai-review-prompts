@@ -21,7 +21,7 @@ chmod +x "$TMP/bin/gh"
 
 run_drop() {
 	STUB_MODE="$1" PATH="$TMP/bin:$PATH" \
-		REPO=HarperFast/x PR_NUMBER=1 EVENT_HEAD=aaaaaaaa \
+		REPO=HarperFast/x PR_NUMBER=1 HEAD_SHA=aaaaaaaa \
 		bash "$SCRIPT" > "$TMP/out" 2>&1
 	RUN_STATUS=$?
 }

@@ -114,8 +114,8 @@ for wf in _claude-review _gemini-review; do
     "$wf drop step invokes the behavior-tested guard script"
   assert_contains "$WINDOW" "Sparse-checkout the superseded-run guard" \
     "$wf checks the guard script out before invoking it"
-  assert_contains "$WINDOW" "EVENT_HEAD: \${{ github.event.pull_request.head.sha }}" \
-    "$wf drop step wires the event head into the guard"
+  assert_contains "$WINDOW" "HEAD_SHA: \${{ github.event.pull_request.head.sha }}" \
+    "$wf drop step wires the event head into the guard (HEAD_SHA)"
   assert_contains "$FULL_WF" "HEAD_SHA: \${{ github.event.pull_request.head.sha }}" \
     "$wf assess step wires the event head for the pre-queue gate"
   assert_contains "$FULL_WF" "fresh: \${{ steps.assess.outputs.fresh }}" \
