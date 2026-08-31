@@ -98,6 +98,16 @@ for wf in _claude-review _gemini-review; do
     "$wf review job gates on authorization"
   assert_contains "$JOB_CONC" "needs.authorize.outputs.skip != 'true'" \
     "$wf review job gates on the mechanical-diff skip"
+  # Monotonic ordering: a stale event is never admitted to the
+  # cancelling group (pre-queue fresh gate), and a run superseded in
+  # the authorize->queue window drops itself instead of reviewing.
+  assert_contains "$JOB_CONC" "needs.authorize.outputs.fresh != 'false'" \
+    "$wf review job refuses admission to stale events"
+  FULL_WF="$(cat "$DIR/../.github/workflows/$wf.yml")"
+  assert_contains "$FULL_WF" "Drop superseded run" \
+    "$wf carries the post-acquire superseded self-cancel"
+  assert_contains "$FULL_WF" "gh run cancel" \
+    "$wf superseded step cancels its own run"
 done
 G_JOB="$(awk '/^  review:/,/^    steps:/' "$DIR/../.github/workflows/_gemini-review.yml")"
 assert_contains "$G_JOB" "needs.authorize.outputs.has-gemini-key == 'true'" \
