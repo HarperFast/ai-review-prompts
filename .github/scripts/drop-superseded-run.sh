@@ -14,6 +14,10 @@
 #   HEAD_SHA  the head SHA the triggering event carried
 set -uo pipefail
 
+# No event head to compare against — fail open (mirrors the assess
+# script's contract: uncertainty never blocks a review).
+[ -n "${HEAD_SHA:-}" ] || exit 0
+
 LIVE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null) || LIVE=""
 # `--jq` prints the literal string "null" for a missing field — treat
 # it as unreadable (fail-open), not as a differing head.

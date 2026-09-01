@@ -39,4 +39,12 @@ assert_status "$RUN_STATUS" 0 "a null live head fails open and proceeds"
 run_drop api-fail
 assert_status "$RUN_STATUS" 0 "an unreadable live head fails open and proceeds"
 
+STUB_MODE=stale PATH="$TMP/bin:$PATH" REPO=HarperFast/x PR_NUMBER=1 HEAD_SHA= \
+	bash "$SCRIPT" > "$TMP/out" 2>&1
+assert_status "$?" 0 "an empty HEAD_SHA fails open even when the live head reads"
+
+STUB_MODE=stale PATH="$TMP/bin:$PATH" REPO=HarperFast/x PR_NUMBER=1 \
+	bash "$SCRIPT" > "$TMP/out" 2>&1
+assert_status "$?" 0 "an unset HEAD_SHA fails open rather than crashing under set -u"
+
 t_summary
