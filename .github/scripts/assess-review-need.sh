@@ -6,6 +6,9 @@
 # Inputs (env):
 #   REPO              owner/repo of the PR
 #   PR_NUMBER         PR number
+#   HEAD_SHA          the event's head SHA; compared against the PR's
+#                     live head for the freshness output (empty skips
+#                     the check and reports fresh)
 #   EFFORT            fixed effort when EFFORT_BY_SIZE is empty
 #                     ('' = omit the flag)
 #   EFFORT_BY_SIZE    newline-separated '<max-lines> <level>' bands,
@@ -21,6 +24,9 @@
 # Outputs (to $GITHUB_OUTPUT):
 #   skip    true | false
 #   effort  effort level the review should run at ('' = omit the flag)
+#   fresh   true | false — false only when the PR's live head is known
+#           to differ from HEAD_SHA (stale event; the review job must
+#           not be admitted to the cancelling concurrency group)
 #   reason  one-line explanation for the run log
 #
 # Fail-OPEN by design: any API or parse failure proceeds with a full
@@ -32,9 +38,41 @@ emit() {
   {
     printf 'skip=%s\n' "$1"
     printf 'effort=%s\n' "$2"
+    printf 'fresh=%s\n' "${FRESH}"
     printf 'reason=%s\n' "$3"
   } >> "$GITHUB_OUTPUT"
-  echo "assess-review-need: skip=$1 effort=$2 reason=$3"
+  echo "assess-review-need: skip=$1 effort=$2 fresh=${FRESH} reason=$3"
+}
+
+# --- freshness: is this event still the PR's head? ---------------------
+# A stale run admitted to the review job could cancel a NEWER in-flight
+# review at queue time (GitHub does not order concurrency-group entry).
+# Deciding freshness here — before the review job queues — keeps stale
+# runs out of the cancelling group entirely. Fail-OPEN: an unreadable
+# live head reports fresh (the post-acquire re-check in the review job
+# is the second line of defense).
+FRESH=true
+check_fresh() {  # exits the script with fresh=false when the head moved
+  [ -n "${HEAD_SHA:-}" ] || return 0
+  local live
+  live=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null) || live=""
+  # `--jq` prints the literal string "null" for a missing field — treat
+  # it as unreadable (fail-open), not as a differing head.
+  if [ -n "$live" ] && [ "$live" != "null" ] && [ "$live" != "$HEAD_SHA" ]; then
+    FRESH=false
+    emit false "" "stale-event (head moved ${HEAD_SHA} -> ${live}; not admitted to the cancelling group)"
+    exit 0
+  fi
+}
+check_fresh
+
+# Every path that ADMITS a review (skip=false) must confirm freshness
+# as its last act — early exits included, or a push landing during the
+# file fetches reopens the stale-admission window on exactly those
+# paths (large PRs, API hiccups).
+emit_reviewable() {  # <effort> <reason>
+  check_fresh
+  emit false "$1" "$2"
 }
 
 # Up to 3 pages (300 files). A PR past that is unambiguously reviewable
@@ -42,17 +80,17 @@ emit() {
 PAGES=()
 for page in 1 2 3; do
   PAGE_JSON=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100&page=${page}" 2>/dev/null) || {
-    emit false "${EFFORT}" "assess-unavailable (files API failed; fail-open)"
+    emit_reviewable "${EFFORT}" "assess-unavailable (files API failed; fail-open)"
     exit 0
   }
   COUNT=$(printf '%s' "$PAGE_JSON" | jq 'length' 2>/dev/null) || {
-    emit false "${EFFORT}" "assess-unavailable (unparseable files payload; fail-open)"
+    emit_reviewable "${EFFORT}" "assess-unavailable (unparseable files payload; fail-open)"
     exit 0
   }
   PAGES+=("$PAGE_JSON")
   [ "$COUNT" -lt 100 ] && break
   if [ "$page" = 3 ] && [ "$COUNT" = 100 ]; then
-    emit false "${EFFORT}" "large-pr (>300 files)"
+    emit_reviewable "${EFFORT}" "large-pr (>300 files)"
     exit 0
   fi
 done
@@ -153,4 +191,4 @@ while IFS= read -r band; do
   fi
 done <<< "${EFFORT_BY_SIZE:-}"
 
-emit false "${EFFORT_OUT}" "${REASON}"
+emit_reviewable "${EFFORT_OUT}" "${REASON}"

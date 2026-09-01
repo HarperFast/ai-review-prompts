@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Post-acquire freshness check for the reusable review jobs: after the
+# job-level concurrency slot is acquired, confirm the event this run
+# was born from is still the PR's head. If the head moved, FAIL (exit
+# 1) rather than review a stale commit — the failed check lands on the
+# superseded (old) head, and the log step refuses failed runs as
+# verdicts. Fresh, unreadable, or null live heads exit 0 (fail-open:
+# the pre-queue gate in assess-review-need.sh is the first line of
+# defense; this is the second).
+#
+# Inputs (env):
+#   REPO        owner/repo of the PR
+#   PR_NUMBER   PR number
+#   HEAD_SHA  the head SHA the triggering event carried
+set -uo pipefail
+
+# No event head to compare against — fail open (mirrors the assess
+# script's contract: uncertainty never blocks a review).
+[ -n "${HEAD_SHA:-}" ] || exit 0
+
+LIVE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.sha 2>/dev/null) || LIVE=""
+# `--jq` prints the literal string "null" for a missing field — treat
+# it as unreadable (fail-open), not as a differing head.
+if [ -n "$LIVE" ] && [ "$LIVE" != "null" ] && [ "$LIVE" != "${HEAD_SHA}" ]; then
+  echo "::error::Superseded (head moved ${HEAD_SHA} -> ${LIVE}); failing instead of reviewing a stale head."
+  echo "::notice::The tip is usually covered by the newer event's own run. If that run shows as cancelled (the residual reorder window), re-trigger a review — push, re-apply the opt-in label, or re-run the newer run — a final pre-merge push has no next event."
+  exit 1
+fi
+exit 0

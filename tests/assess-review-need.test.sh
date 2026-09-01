@@ -10,7 +10,20 @@ mkdir -p "$TMP/bin"
 
 cat > "$TMP/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-URL="${*: -1}"
+URL="$2"
+if [[ "$URL" != *"/files"* ]] && [[ "$URL" == */pulls/1 ]]; then
+	case "${STUB_MODE:-small}" in
+		meta-fail) exit 1 ;;
+		stale-head) printf 'bbbbbbbb\n' ;;
+		null-head) printf 'null\n' ;;
+		stale-late)
+			if [ -f "$STUB_STATE/meta-called" ]; then printf 'bbbbbbbb\n'; else touch "$STUB_STATE/meta-called"; printf 'aaaaaaaa\n'; fi ;;
+		paginated-stale)
+			if [ -f "$STUB_STATE/meta-called" ]; then printf 'bbbbbbbb\n'; else touch "$STUB_STATE/meta-called"; printf 'aaaaaaaa\n'; fi ;;
+		*) printf 'aaaaaaaa\n' ;;
+	esac
+	exit 0
+fi
 case "${STUB_MODE:-small}" in
 	api-failure)
 		exit 1 ;;
@@ -32,10 +45,12 @@ case "${STUB_MODE:-small}" in
 		printf '%s\n' '[{"filename":"assets/logo.png","additions":null,"deletions":null},{"filename":"src/tiny.ts","additions":3,"deletions":1}]' ;;
 	huge)
 		printf '%s\n' '[{"filename":"src/big.ts","additions":1600,"deletions":200}]' ;;
-	paginated)
+	paginated|paginated-stale)
 		printf '%s' '['
 		for i in $(seq 1 99); do printf '{"filename":"f%s.ts","additions":1,"deletions":0},' "$i"; done
 		printf '%s\n' '{"filename":"f100.ts","additions":1,"deletions":0}]' ;;
+	*)
+		printf '%s\n' '[{"filename":"src/auth.ts","additions":20,"deletions":8},{"filename":"src/auth.test.ts","additions":12,"deletions":0}]' ;;
 esac
 STUB
 chmod +x "$TMP/bin/gh"
@@ -43,8 +58,10 @@ chmod +x "$TMP/bin/gh"
 run_assess() {
 	local mode="$1"; shift
 	: > "$TMP/out"
-	STUB_MODE="$mode" PATH="$TMP/bin:$PATH" \
+	rm -rf "$TMP/state"; mkdir -p "$TMP/state"
+	STUB_MODE="$mode" STUB_STATE="$TMP/state" PATH="$TMP/bin:$PATH" \
 		REPO=HarperFast/x PR_NUMBER=1 GITHUB_OUTPUT="$TMP/out" \
+		HEAD_SHA="${HEAD_SHA_OVERRIDE-}" \
 		EFFORT="${EFFORT_OVERRIDE-xhigh}" \
 		EFFORT_BY_SIZE="${EFFORT_BY_SIZE_OVERRIDE-$(printf '60 high\n1500 xhigh\n* max')}" \
 		SKIP_WHEN_ONLY="${SKIP_WHEN_ONLY_OVERRIDE-$(printf 'package-lock.json\nnpm-shrinkwrap.json\nyarn.lock\npnpm-lock.yaml\nbun.lockb\nCHANGELOG.md')}" \
@@ -106,5 +123,31 @@ assert_eq "$(out effort)" "high" "null fields count as zero lines for tiering"
 run_assess paginated
 assert_eq "$(out skip)" "false" "pagination cap fails open to a review"
 assert_contains "$(out reason)" "large-pr" "pagination cap reason names the gate"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess small
+assert_eq "$(out fresh)" "true" "matching live head reports fresh"
+assert_eq "$(out skip)" "false" "fresh event still reviews"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess stale-head
+assert_status "$RUN_STATUS" 0 "stale event exits successfully"
+assert_eq "$(out fresh)" "false" "moved live head reports stale"
+assert_contains "$(out reason)" "stale-event" "stale reason names the gate"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess null-head
+assert_eq "$(out fresh)" "true" "a null live head fails open to fresh, not to stale"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess paginated-stale
+assert_eq "$(out fresh)" "false" "the large-pr early exit still catches a moved head"
+assert_contains "$(out reason)" "stale-event" "the early-exit stale reason names the gate"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess stale-late
+assert_eq "$(out fresh)" "false" "a head that moves DURING assessment is caught by the late re-check"
+
+HEAD_SHA_OVERRIDE=aaaaaaaa run_assess meta-fail
+assert_eq "$(out fresh)" "true" "unreadable live head fails open to fresh"
+assert_eq "$(out skip)" "false" "meta failure still reviews"
+
+run_assess small
+assert_eq "$(out fresh)" "true" "no HEAD_SHA input skips the check as fresh"
 
 t_summary

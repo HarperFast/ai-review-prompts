@@ -194,6 +194,7 @@ jobs:
     outputs:
       authorized: ${{ steps.check.outputs.authorized }}
       skip: ${{ steps.assess.outputs.skip }}
+      fresh: ${{ steps.assess.outputs.fresh }}
       effort: ${{ steps.assess.outputs.effort }}
     steps:
       - name: Mint org-read token
@@ -245,6 +246,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EFFORT: ${{ inputs.effort }}
           EFFORT_BY_SIZE: ${{ inputs.effort-by-size }}
           SKIP_WHEN_ONLY: ${{ inputs.skip-when-only }}
@@ -254,7 +256,8 @@ jobs:
     needs: authorize
     if: |
       needs.authorize.outputs.authorized == 'true' &&
-      needs.authorize.outputs.skip != 'true'
+      needs.authorize.outputs.skip != 'true' &&
+      needs.authorize.outputs.fresh != 'false'
     concurrency:
       # Cancellation boundary. Job-level concurrency engages when THIS
       # job is queued — after authorize (PR author AND actor), the skip
@@ -284,6 +287,41 @@ jobs:
         # ready_for_review) start immediately.
         if: github.event.action == 'synchronize' && inputs.debounce-seconds > 0
         run: sleep ${{ inputs.debounce-seconds }}
+
+      - name: Sparse-checkout the superseded-run guard
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: HarperFast/ai-review-prompts
+          ref: ${{ inputs.ai-review-prompts-ref }}
+          path: .ai-review-prompts-guard
+          sparse-checkout: |
+            .github/scripts/drop-superseded-run.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Drop superseded run
+        # Post-acquire freshness check (the pre-queue gate lives in the
+        # authorize job's assess step): if the PR head moved between
+        # authorization and this job acquiring the concurrency slot,
+        # FAIL this run rather than reviewing a stale commit. The
+        # failed check lands on the superseded (old) head and the log
+        # step refuses failed runs as verdicts; the tip is usually
+        # covered by the newer event's own run, but in the residual
+        # reorder window that run may itself have been cancelled — the
+        # error message names the re-trigger options. Failing needs no
+        # extra token grant.
+        #
+        # Known residual, accepted: a push landing between the assess
+        # step's LAST freshness read and this job's queue entry can
+        # still admit a stale run that cancels a newer one at queue
+        # entry and then fails here — the tip is left unreviewed until
+        # its next event, visibly (cancelled + failed checks). Closing
+        # it fully needs re-dispatch, tracked in ai-review-prompts#92.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .ai-review-prompts-guard/.github/scripts/drop-superseded-run.sh
 
       - name: Checkout
         # Full history so the review agent can use `git blame` / `git log`
@@ -688,7 +726,10 @@ jobs:
         # format stays "[<repo>] PR #<N>: no blockers" (unchanged
         # from pre-Gemini history). NOTES_FILE_BASENAME defaults to
         # `claude-review-notes.md` in the script.
-        if: always()
+        # `hashFiles` guards the drop-superseded path: that step fails
+        # BEFORE any checkout, so the logger script isn't on disk and a
+        # bare always() would end the run with a misleading exit-127.
+        if: always() && hashFiles('.ai-review-prompts/.github/scripts/**') != ''
         env:
           GH_TOKEN: ${{ github.token }}
           AI_REVIEW_LOG_TOKEN: ${{ secrets.AI_REVIEW_LOG_TOKEN }}
