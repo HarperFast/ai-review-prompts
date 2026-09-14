@@ -117,11 +117,32 @@ d. If no PR exists yet: `gh pr create` into `main` titled
    no prompt changes this week`). End the description with
    `<!-- weekly-calibration -->` followed by
    `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-e. Do NOT merge and do NOT enable auto-merge.
+e. Merge it. The loop's value is the landed file, not the open PR: two
+   consecutive digests once sat unreviewed for 12 and 5 days because
+   `gh pr create` requests no reviewer and nothing else paged a human, so
+   `CALIBRATION.md` froze two weeks behind and neither week's prompt edits
+   shipped. `main` carries no branch protection, so the PR's own checks are
+   the only gate. Run `gh pr checks` and branch on THREE outcomes, not two:
+
+   * **Checks pass** → `gh pr merge --squash --delete-branch`.
+   * **Checks fail** → leave the PR open, `gh pr comment` saying which check
+     failed, and stop. A red calibration PR is a real signal, never something
+     to force past.
+   * **`gh pr checks` reports no checks at all** → merge anyway, and say in a
+     `gh pr comment` that nothing gated it. This is a REAL state, not a
+     hypothetical: PR #93 reported `no checks reported on the branch` while
+     #95 on the same repo had them, because a run created with `GITHUB_TOKEN`
+     does not always trigger workflows. `gh pr checks` exits NON-ZERO in this
+     case, so treating a non-zero exit as "failed" would refuse to merge that
+     week forever — reinstating the exact stall this step removes.
+
+   Use `--watch` only after confirming checks exist; watching a PR that has
+   none never returns anything to wait for.
 
 ## Constraints
 
-* Exactly one open PR per week; never merge it, never auto-merge.
+* Exactly one PR per week, merged by this workflow once its checks pass.
+  A week whose checks fail stays open for a human.
 * Conservative on prompt edits — log-only weeks are expected and fine.
 * Never ask questions; if any read/write fails, proceed with what you
   have and STILL open (or update) the PR.
