@@ -828,6 +828,25 @@ jobs:
           INLINE_FILE: ${{ runner.temp }}/gemini-inline.json
         run: bash .ai-review-prompts/.github/scripts/post-inline-comments.sh
 
+      - name: Mint ai-review-log token
+        # Replaces the personal fine-grained PAT (AI_REVIEW_LOG_TOKEN secret)
+        # with a HarperFast AI App installation token scoped to the log repo
+        # (Issues: write). continue-on-error + the || fallback below keep the
+        # legacy PAT working during migration: if the App is not installed on
+        # ai-review-log (or lacks Issues write), this step fails visibly and
+        # the log step falls back. Once this mints cleanly in CI, the
+        # AI_REVIEW_LOG_TOKEN secret can be deleted from the caller repos.
+        id: log-token
+        if: always() && hashFiles('.ai-review-prompts/.github/scripts/**') != ''
+        continue-on-error: true
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: ${{ secrets.HARPERFAST_AI_CLIENT_ID }}
+          private-key: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
+          owner: HarperFast
+          repositories: ai-review-log
+          permission-issues: write
+
       - name: Log review to ai-review-log
         # Best-effort — never fail the job if logging fails. Feeds
         # the central HarperFast/ai-review-log issue tracker
@@ -848,7 +867,7 @@ jobs:
         if: always() && hashFiles('.ai-review-prompts/.github/scripts/**') != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          AI_REVIEW_LOG_TOKEN: ${{ secrets.AI_REVIEW_LOG_TOKEN }}
+          AI_REVIEW_LOG_TOKEN: ${{ steps.log-token.outputs.token || secrets.AI_REVIEW_LOG_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           REVIEW_STATUS: ${{ steps.gemini-review.outcome }}
