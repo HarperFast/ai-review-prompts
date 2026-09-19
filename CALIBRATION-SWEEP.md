@@ -32,7 +32,11 @@ on the nightly triage side). Two deliberate changes from that routine:
 
 The workflow pre-fetches everything from ai-review-log before you start
 (you have NO token for ai-review-log — do not try to read it directly).
-The env var `CALIB_DATA` points at a directory containing:
+The pre-fetch step reads with a HarperFast AI App token minted read-scoped
+to ai-review-log (falling back to a legacy PAT if the mint fails) — that
+detail lives in the workflow, not here, but it's why this doc never asks
+you to authenticate against ai-review-log yourself. The env var
+`CALIB_DATA` points at a directory containing:
 
 * `useful.json`, `noise.json`, `partial.json` — arrays of the issues whose
   verdict was applied this week (`{number, title, closed_at, body,
@@ -113,11 +117,26 @@ c. `git push -u origin calibration/week-of-<WEEK>`.
 d. If no PR exists yet: `gh pr create` into `main` titled
    `calibration: week of <WEEK>`. The PR DESCRIPTION must contain the full
    step-1 synthesis (verdict mix incl. per-model/per-ref, patterns, links
-   to source issues) and a clear changelist (prompt edits, or `log-only —
-   no prompt changes this week`). End the description with
+   to source issues), a clear changelist (prompt edits, or
+   `log-only — no prompt changes this week`), and a note that caller repos consume
+   these prompt files by pinned commit SHA — this PR's edits (including
+   any layer-file changes) are inert for every caller until a separate
+   pin-bump PR rolls the new SHA out to them. End the description with
    `<!-- weekly-calibration -->` followed by
    `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 e. Do NOT merge and do NOT enable auto-merge.
+
+### Dated caveat — the 2026-09-18 backlog catch-up cohort
+
+On 2026-09-18 a one-time sweep closed ~228 backlogged issues in a single day
+(each carries an `<!-- offboard-catchup-sweep -->` comment). Because the
+pre-fetch windows on `closed_at`, the week-of-2026-09-14 entry would count the
+entire backlog as that week's triage. For that entry (and any entry whose
+window includes 2026-09-18): report issues bearing the catch-up marker as a
+separate "backlog cohort" line, excluded from the weekly verdict-mix table and
+from pattern floors — their runs span months of prompt refs and say nothing
+about the current week. A maintainer deletes this caveat once an entry has handled it (the sweep
+agent itself never edits this file — see Constraints).
 
 ## Constraints
 

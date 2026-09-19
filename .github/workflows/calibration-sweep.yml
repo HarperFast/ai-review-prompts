@@ -12,11 +12,16 @@ name: Calibration sweep (weekly)
 # routine; ai-review-log's triage-assist.yml is the sibling migration).
 #
 # Design notes:
-#   * Data is PRE-FETCHED in a deterministic bash step using
-#     AI_REVIEW_LOG_TOKEN (this repo's checkout token can't read the
-#     private log repo). The agent itself holds only `github.token`,
-#     scoped to this repo by the job's permissions block — it can't
-#     touch ai-review-log at all.
+#   * Data is PRE-FETCHED in a deterministic bash step using a token
+#     minted from the HarperFast AI App (repositories: ai-review-log,
+#     Issues: read) — same pattern as #98's mint on the logging side of
+#     _claude-review.yml / _gemini-review.yml, scoped to read since this
+#     sweep never writes to ai-review-log. The AI_REVIEW_LOG_TOKEN PAT
+#     secret is the migration fallback if the mint fails (App not yet
+#     installed there, etc); once the mint runs green in CI the PAT can
+#     be deleted. The agent itself holds only `github.token`, scoped to
+#     this repo by the job's permissions block — it can't touch
+#     ai-review-log at all.
 #   * The agent creates the branch + PR with `github.token`, so the
 #     calibration PR does NOT retrigger this repo's own PR workflows
 #     (GitHub suppresses workflow-triggering for github.token events).
@@ -28,8 +33,11 @@ name: Calibration sweep (weekly)
 #     dispatch can override `week` to back-fill a missed week.
 #
 # Prerequisites:
-#   - ANTHROPIC_API_KEY   (repo secret)
-#   - AI_REVIEW_LOG_TOKEN (repo secret — issues:read on ai-review-log)
+#   - ANTHROPIC_API_KEY               (repo secret)
+#   - HARPERFAST_AI_CLIENT_ID         (org secret — App-token mint)
+#   - HARPERFAST_AI_APP_PRIVATE_KEY   (org secret — App-token mint)
+#   - AI_REVIEW_LOG_TOKEN             (repo secret — fallback only;
+#     issues:read on ai-review-log)
 
 on:
   schedule:
@@ -72,9 +80,28 @@ jobs:
           # what authenticates the agent's `git push`.
           fetch-depth: 0
 
+      - name: Mint ai-review-log token
+        # HarperFast AI App installation token scoped to the log repo
+        # (Issues: read) — this sweep only reads ai-review-log, never
+        # writes to it. continue-on-error + the `||` fallback on the next
+        # step keep the legacy PAT (AI_REVIEW_LOG_TOKEN secret) working
+        # during migration: if the App isn't installed on ai-review-log
+        # (or lacks Issues read), this step fails visibly and the
+        # pre-fetch falls back. Same pattern as #98's mint step in
+        # _claude-review.yml / _gemini-review.yml.
+        id: log-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: ${{ secrets.HARPERFAST_AI_CLIENT_ID }}
+          private-key: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
+          owner: HarperFast
+          repositories: ai-review-log
+          permission-issues: read
+
       - name: Pre-fetch the week's verdicts from ai-review-log
         env:
-          GH_TOKEN: ${{ secrets.AI_REVIEW_LOG_TOKEN }}
+          GH_TOKEN: ${{ steps.log-token.outputs.token || secrets.AI_REVIEW_LOG_TOKEN }}
           WEEK_OVERRIDE: ${{ inputs.week }}
         run: |
           set -euo pipefail
