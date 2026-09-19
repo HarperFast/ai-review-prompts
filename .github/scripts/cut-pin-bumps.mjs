@@ -29,9 +29,19 @@
 
 import { execFileSync } from 'node:child_process';
 
-const WORKFLOW_FILES = ['.github/workflows/claude-review.yml', '.github/workflows/gemini-review.yml'];
+// claude-review.yml is canonical (its pin anchors the PR summary); the
+// others are bumped from their own current pin so historical drift heals
+// (both 2026-09 manual bump rounds missed mention/issue-to-pr, leaving
+// them weeks behind the review workflows).
+const WORKFLOW_FILES = [
+	'.github/workflows/claude-review.yml',
+	'.github/workflows/gemini-review.yml',
+	'.github/workflows/claude-mention.yml',
+	'.github/workflows/claude-issue-to-pr.yml',
+];
 const PIN_BRANCH_PREFIX = 'ai-review-prompts-pin-';
-const PIN_RE = /_(?:claude|gemini)-review\.yml@([0-9a-f]{40})/;
+const REUSABLE_NAMES = '_(?:claude-review|gemini-review|claude-mention|claude-issue-to-pr)\\.yml';
+const PIN_RE = new RegExp(`${REUSABLE_NAMES}@([0-9a-f]{40})`);
 const PROMPT_FILE_RE = /^(universal\.md|harper\/.*\.md|repo-type\/.*\.md)$/;
 
 export function extractPin(content) {
@@ -69,7 +79,7 @@ export function bumpPinContent(content, { oldSha, newSha, comment }) {
 		throw new Error(`pin ${oldSha} not found in file content; refusing to bump`);
 	}
 	let next = content.replaceAll(oldSha, newSha);
-	const usesLineRe = new RegExp(`^(.*_(?:claude|gemini)-review\\.yml@${newSha})(?:[^\\n]*)$`, 'gm');
+	const usesLineRe = new RegExp(`^(.*${REUSABLE_NAMES}@${newSha})(?:[^\\n]*)$`, 'gm');
 	if (!next.match(usesLineRe)) {
 		throw new Error(`no 'uses:' line found for ${newSha} after substitution; refusing to bump`);
 	}
@@ -228,43 +238,93 @@ export async function main() {
 		if (!value) throw new Error(`missing required env var ${name}`);
 	}
 
-	const primaryContent = await getFile(CALLER_TOKEN, CALLER_REPO, WORKFLOW_FILES[0]);
-	const oldSha = extractPin(primaryContent);
-	if (!oldSha) throw new Error(`could not find an ai-review-prompts pin in ${CALLER_REPO}/${WORKFLOW_FILES[0]}`);
+	// Read every workflow file up front. The canonical file must exist and
+	// carry a pin; the others are optional (404 -> skipped with a log line)
+	// but must carry a pin when present. Each file bumps from ITS OWN pin.
+	const contents = new Map();
+	const pins = new Map();
+	for (const path of WORKFLOW_FILES) {
+		let content;
+		try {
+			content = await getFile(CALLER_TOKEN, CALLER_REPO, path);
+		} catch (err) {
+			if (err.status === 404 && path !== WORKFLOW_FILES[0]) {
+				console.log(`${CALLER_REPO}: ${path} absent; skipping`);
+				continue;
+			}
+			throw err;
+		}
+		const pin = extractPin(content);
+		if (!pin) throw new Error(`could not find an ai-review-prompts pin in ${CALLER_REPO}/${path}`);
+		contents.set(path, content);
+		pins.set(path, pin);
+	}
 
-	if (oldSha === NEW_SHA) {
-		console.log(`${CALLER_REPO} is already at head (${oldSha}); nothing to do.`);
+	const stale = [...pins.entries()].filter(([, pin]) => pin !== NEW_SHA);
+	if (stale.length === 0) {
+		console.log(`${CALLER_REPO} is already at head (${NEW_SHA.slice(0, 7)}) in all workflow files; nothing to do.`);
 		return;
+	}
+
+	// The PR summary spans from the oldest stale pin: among distinct stale
+	// pins, the one the compare API reports furthest behind NEW_SHA.
+	const distinctStale = [...new Set(stale.map(([, pin]) => pin))];
+	let oldSha = distinctStale[0];
+	if (distinctStale.length > 1) {
+		let maxAhead = -1;
+		for (const pin of distinctStale) {
+			const cmp = await ghRequest(GH_TOKEN, `https://api.github.com/repos/${PROMPTS_REPO}/compare/${pin}...${NEW_SHA}`);
+			if (cmp.ahead_by > maxAhead) {
+				maxAhead = cmp.ahead_by;
+				oldSha = pin;
+			}
+		}
+		console.log(`${CALLER_REPO}: pins drifted across files (${distinctStale.map((s) => s.slice(0, 7)).join(', ')}); healing all to ${NEW_SHA.slice(0, 7)}`);
 	}
 
 	const oldShort = oldSha.slice(0, 7);
 	const newShort = NEW_SHA.slice(0, 7);
 
-	const changedPaths = execGit(['diff', '--name-only', oldSha, NEW_SHA]).split('\n').filter(Boolean);
-	if (changedPaths.length === 0) {
-		throw new Error(
-			`git diff ${oldSha}..${NEW_SHA} reported no changed paths; refusing to cut a pin bump for an empty diff`
-		);
-	}
-
 	const compare = await ghRequest(
 		GH_TOKEN,
 		`https://api.github.com/repos/${PROMPTS_REPO}/compare/${oldSha}...${NEW_SHA}`
 	);
+
+	// Changed paths come from local git (deterministic at any range size,
+	// thanks to the fetch-depth:0 checkout). When the base sha is absent
+	// locally (e.g. a drifted pin whose commit was pruned), fall back to
+	// the compare API's files list — capped at 300 entries, so warn when
+	// the cap is plausibly in play.
+	let changedPaths;
+	try {
+		changedPaths = execGit(['diff', '--name-only', oldSha, NEW_SHA]).split('\n').filter(Boolean);
+	} catch {
+		changedPaths = (compare.files ?? []).map((f) => f.filename);
+		if (changedPaths.length >= 300) {
+			console.warn(`${CALLER_REPO}: compare API files list hit its 300-entry cap; prompt-file detection may be incomplete`);
+		}
+		console.warn(`${CALLER_REPO}: local git could not diff ${oldSha.slice(0, 7)}..${NEW_SHA.slice(0, 7)}; using compare API file list (${changedPaths.length} paths)`);
+	}
+	if (changedPaths.length === 0) {
+		throw new Error(
+			`no changed paths between ${oldSha} and ${NEW_SHA}; refusing to cut a pin bump for an empty diff`
+		);
+	}
+
 	const prs = await collectMergedPrs(GH_TOKEN, PROMPTS_REPO, compare.commits);
-	const date = execGit(['log', '-1', '--format=%cd', '--date=short', NEW_SHA]);
+	let date;
+	try {
+		date = execGit(['log', '-1', '--format=%cd', '--date=short', NEW_SHA]);
+	} catch {
+		date = new Date().toISOString().slice(0, 10);
+	}
 	const comment = buildPinComment({ date, prs, prevShortSha: oldShort });
 
 	const files = {};
-	for (const path of WORKFLOW_FILES) {
-		const content = path === WORKFLOW_FILES[0] ? primaryContent : await getFile(CALLER_TOKEN, CALLER_REPO, path);
-		const currentPin = extractPin(content);
-		if (currentPin !== oldSha) {
-			throw new Error(
-				`${CALLER_REPO}/${path} pin (${currentPin}) does not match ${WORKFLOW_FILES[0]}'s pin (${oldSha}); refusing to bump inconsistent pins`
-			);
-		}
-		files[path] = bumpPinContent(content, { oldSha, newSha: NEW_SHA, comment });
+	for (const [path, content] of contents) {
+		const currentPin = pins.get(path);
+		if (currentPin === NEW_SHA) continue; // already at head; leave untouched
+		files[path] = bumpPinContent(content, { oldSha: currentPin, newSha: NEW_SHA, comment });
 	}
 
 	const targetBranch = `${PIN_BRANCH_PREFIX}${newShort}`;

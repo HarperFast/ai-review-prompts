@@ -103,8 +103,56 @@ test('main() is a no-op (no commit/PR calls) when the caller is already at head'
 		delete process.env.CALLER_REPO;
 		delete process.env.NEW_SHA;
 	}
-	assert.equal(fetchCalls.length, 1, 'only reads the live pin; no compare/commit/PR calls');
+	assert.equal(fetchCalls.length, 4, 'reads each workflow file once; no compare/commit/PR calls');
 	assert.match(fetchCalls[0], /contents\/\.github\/workflows\/claude-review\.yml/);
+	for (const call of fetchCalls) {
+		assert.match(call, /\/contents\/\.github\/workflows\//, 'every call is a workflow-file read');
+	}
+});
+
+test('main() heals a drifted secondary file even when the canonical file is at head', async (t) => {
+	const STALE_SHA = 'a'.repeat(40);
+	const staleContent = SAMPLE.replaceAll(OLD_SHA, STALE_SHA).replaceAll('_claude-review.yml', '_claude-mention.yml');
+	const writes = [];
+	t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
+		const u = String(url);
+		const method = options.method || 'GET';
+		if (method !== 'GET') writes.push(`${method} ${u}`);
+		if (u.includes('/contents/.github/workflows/claude-mention.yml')) {
+			return new Response(JSON.stringify({ content: Buffer.from(staleContent).toString('base64') }), { status: 200 });
+		}
+		if (u.includes('/contents/')) {
+			return new Response(JSON.stringify({ content: Buffer.from(SAMPLE).toString('base64') }), { status: 200 });
+		}
+		if (u.includes('/compare/')) {
+			return new Response(JSON.stringify({ ahead_by: 5, commits: [], files: [{ filename: '.github/workflows/_claude-mention.yml' }] }), { status: 200 });
+		}
+		if (u.includes('/git/matching-refs/')) return new Response(JSON.stringify([]), { status: 200 });
+		if (u.endsWith('/repos/HarperFast/oauth')) return new Response(JSON.stringify({ default_branch: 'main' }), { status: 200 });
+		if (u.includes('/git/ref/heads/main')) return new Response(JSON.stringify({ object: { sha: 'basesha' } }), { status: 200 });
+		if (u.includes('/git/commits/basesha')) return new Response(JSON.stringify({ tree: { sha: 'treesha' } }), { status: 200 });
+		if (u.includes('/git/trees')) return new Response(JSON.stringify({ sha: 'newtree' }), { status: 200 });
+		if (u.includes('/git/commits') && method === 'POST') return new Response(JSON.stringify({ sha: 'newcommit' }), { status: 200 });
+		if (u.includes('/git/refs')) return new Response(JSON.stringify({}), { status: 200 });
+		if (u.includes('/pulls?head=')) return new Response(JSON.stringify([]), { status: 200 });
+		if (u.includes('/pulls') && method === 'POST') return new Response(JSON.stringify({ number: 42 }), { status: 200 });
+		return new Response(JSON.stringify({}), { status: 200 });
+	});
+	process.env.GH_TOKEN = 'gh-token';
+	process.env.CALLER_TOKEN = 'caller-token';
+	process.env.CALLER_REPO = 'HarperFast/oauth';
+	process.env.NEW_SHA = OLD_SHA; // canonical file already at head; mention drifted to STALE_SHA
+	process.env.PROMPTS_DIR = process.cwd();
+	try {
+		await main();
+	} finally {
+		delete process.env.GH_TOKEN;
+		delete process.env.CALLER_TOKEN;
+		delete process.env.CALLER_REPO;
+		delete process.env.NEW_SHA;
+		delete process.env.PROMPTS_DIR;
+	}
+	assert.ok(writes.some((w) => w.includes('/git/') || w.includes('/pulls')), 'drifted secondary still produces a bump');
 });
 
 test('buildPrBody reports no prompt-file changes for a workflow-only bump', () => {
