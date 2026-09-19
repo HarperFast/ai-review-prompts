@@ -55,7 +55,10 @@ export function isPromptFile(path) {
 
 export function summarizePrs(prs, { maxEntries = 6, maxLen = 240 } = {}) {
 	if (prs.length === 0) return '';
-	const entries = prs.slice(0, maxEntries).map((pr) => `#${pr.number} ${pr.title}`);
+	// Titles land inside a single-line YAML comment: any run of whitespace
+	// (incl. newlines, which would corrupt the workflow file) collapses to
+	// one space.
+	const entries = prs.slice(0, maxEntries).map((pr) => `#${pr.number} ${String(pr.title).replace(/\s+/g, ' ').trim()}`);
 	let summary = entries.join('; ');
 	if (prs.length > maxEntries) summary += `; +${prs.length - maxEntries} more`;
 	if (summary.length > maxLen) summary = `${summary.slice(0, maxLen - 1)}…`;

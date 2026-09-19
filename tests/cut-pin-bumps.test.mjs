@@ -165,6 +165,12 @@ test('main() heals a drifted secondary file even when the canonical file is at h
 	);
 });
 
+test('summarizePrs collapses newlines and whitespace runs in titles', () => {
+	const summary = summarizePrs([{ number: 7, title: 'fix: a\nmultiline\t  title' }]);
+	assert.equal(summary, '#7 fix: a multiline title');
+	assert.doesNotMatch(summary, /\n/);
+});
+
 test('buildPrBody collapses long path lists into a details block', () => {
 	const paths = Array.from({ length: 20 }, (_, i) => `file-${i}.md`);
 	const body = buildPrBody({
