@@ -117,8 +117,8 @@ c. `git push -u origin calibration/week-of-<WEEK>`.
 d. If no PR exists yet: `gh pr create` into `main` titled
    `calibration: week of <WEEK>`. The PR DESCRIPTION must contain the full
    step-1 synthesis (verdict mix incl. per-model/per-ref, patterns, links
-   to source issues), a clear changelist (prompt edits, or `log-only —
-   no prompt changes this week`), and a note that caller repos consume
+   to source issues), a clear changelist (prompt edits, or
+   `log-only — no prompt changes this week`), and a note that caller repos consume
    these prompt files by pinned commit SHA — this PR's edits (including
    any layer-file changes) are inert for every caller until a separate
    pin-bump PR rolls the new SHA out to them. End the description with
