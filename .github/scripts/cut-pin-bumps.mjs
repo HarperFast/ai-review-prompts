@@ -69,8 +69,8 @@ export function bumpPinContent(content, { oldSha, newSha, comment }) {
 		throw new Error(`pin ${oldSha} not found in file content; refusing to bump`);
 	}
 	let next = content.replaceAll(oldSha, newSha);
-	const usesLineRe = new RegExp(`^(.*_(?:claude|gemini)-review\\.yml@${newSha})(?:[^\\n]*)$`, 'm');
-	if (!usesLineRe.test(next)) {
+	const usesLineRe = new RegExp(`^(.*_(?:claude|gemini)-review\\.yml@${newSha})(?:[^\\n]*)$`, 'gm');
+	if (!next.match(usesLineRe)) {
 		throw new Error(`no 'uses:' line found for ${newSha} after substitution; refusing to bump`);
 	}
 	next = next.replace(usesLineRe, (_match, prefix) => `${prefix} # ${comment}`);
