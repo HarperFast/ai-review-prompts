@@ -88,7 +88,10 @@ export function bumpPinContent(content, { oldSha, newSha, comment }) {
 }
 
 export function buildPrBody({ oldShort, newShort, compareUrl, changedPaths, promptFilesChanged }) {
-	const pathsList = changedPaths.map((p) => `- \`${p}\``).join('\n');
+	let pathsList = changedPaths.map((p) => `- \`${p}\``).join('\n');
+	if (changedPaths.length > 15) {
+		pathsList = `<details><summary>${changedPaths.length} changed paths</summary>\n\n${pathsList}\n\n</details>`;
+	}
 	const promptNote = promptFilesChanged
 		? '**Prompt files changed: yes** — reviews on this repo run uncalibrated against the new layer content until this merges.'
 		: '**Prompt files changed:** no — workflow/script-only bump.';

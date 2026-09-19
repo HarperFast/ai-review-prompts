@@ -165,6 +165,19 @@ test('main() heals a drifted secondary file even when the canonical file is at h
 	);
 });
 
+test('buildPrBody collapses long path lists into a details block', () => {
+	const paths = Array.from({ length: 20 }, (_, i) => `file-${i}.md`);
+	const body = buildPrBody({
+		oldShort: 'aaaaaaa',
+		newShort: 'bbbbbbb',
+		compareUrl: 'https://example.invalid/compare',
+		changedPaths: paths,
+		promptFilesChanged: false,
+	});
+	assert.match(body, /<details><summary>20 changed paths<\/summary>/);
+	assert.match(body, /- `file-19\.md`/);
+});
+
 test('buildPrBody reports no prompt-file changes for a workflow-only bump', () => {
 	const body = buildPrBody({
 		oldShort: '28544a1',
