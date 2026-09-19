@@ -126,6 +126,17 @@ d. If no PR exists yet: `gh pr create` into `main` titled
    `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 e. Do NOT merge and do NOT enable auto-merge.
 
+### Dated caveat — the 2026-09-18 backlog catch-up cohort
+
+On 2026-09-18 a one-time sweep closed ~228 backlogged issues in a single day
+(each carries an `<!-- offboard-catchup-sweep -->` comment). Because the
+pre-fetch windows on `closed_at`, the week-of-2026-09-14 entry would count the
+entire backlog as that week's triage. For that entry (and any entry whose
+window includes 2026-09-18): report issues bearing the catch-up marker as a
+separate "backlog cohort" line, excluded from the weekly verdict-mix table and
+from pattern floors — their runs span months of prompt refs and say nothing
+about the current week. Delete this caveat once an entry has handled it.
+
 ## Constraints
 
 * Exactly one open PR per week; never merge it, never auto-merge.
