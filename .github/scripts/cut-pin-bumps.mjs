@@ -114,6 +114,9 @@ function execGit(args) {
 
 async function ghRequest(token, url, options = {}) {
 	const res = await fetch(url, {
+		// Node fetch has no default timeout; a wedged connection would
+		// otherwise hang the leg until the runner's job timeout.
+		signal: AbortSignal.timeout(30_000),
 		...options,
 		headers: {
 			'Authorization': `Bearer ${token}`,
