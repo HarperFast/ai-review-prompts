@@ -135,7 +135,8 @@ entire backlog as that week's triage. For that entry (and any entry whose
 window includes 2026-09-18): report issues bearing the catch-up marker as a
 separate "backlog cohort" line, excluded from the weekly verdict-mix table and
 from pattern floors — their runs span months of prompt refs and say nothing
-about the current week. Delete this caveat once an entry has handled it.
+about the current week. A maintainer deletes this caveat once an entry has handled it (the sweep
+agent itself never edits this file — see Constraints).
 
 ## Constraints
 
