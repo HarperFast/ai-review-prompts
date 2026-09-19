@@ -82,6 +82,8 @@ Inject `${{ steps.scope.outputs.composed }}` into the `prompt:` input of your Cl
 
 **Pin to a SHA or a tag, not `main`.** Review behavior is meant to be reproducible across runs; bumping the pin is how you adopt changes intentionally.
 
+For the HarperFast-internal caller repos (oauth, harper, harper-pro), `.github/workflows/cut-pin-bumps.yml` opens (or force-updates) a pin-bump PR against each one automatically whenever this repo's `main` moves — merging that PR is still the human, intentional step that adopts the change.
+
 ## Writing / editing layers
 
 - Each bullet should be something a reviewer can check on a PR — specific, not generic.

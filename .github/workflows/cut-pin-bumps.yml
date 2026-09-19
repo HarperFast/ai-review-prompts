@@ -1,0 +1,94 @@
+name: Cut pin-bump PRs
+
+# Keeps the caller repos (oauth, harper, harper-pro) from silently
+# drifting behind this repo's `main` — the manual bumps this replaces
+# (oauth#235, harper#2610, harper-pro#846) require a human to notice and
+# cut each one by hand. Fires on every push to `main` and on a weekly
+# cron as a safety net (a push-triggered run that never ran, or a caller
+# pin that fell behind between pushes).
+#
+# One matrix leg per caller repo, `fail-fast: false`: a caller whose App
+# installation is missing the `workflows: write` grant fails ONLY that
+# leg (the "Mint caller-repo token" step has no `continue-on-error` and
+# no fallback token — a missing grant is a loud, specific failure, not a
+# silent skip) while the others still cut their PRs. See
+# HarperFast/ai-review-prompts#98 for the same fail-loudly-on-mint
+# pattern used for the ai-review-log token.
+#
+# The actual read/diff/commit/PR logic lives in
+# .github/scripts/cut-pin-bumps.mjs — this workflow only resolves the
+# target SHA once and mints the per-repo token.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '13 15 * * 1' # weekly Monday safety net
+  workflow_dispatch: {}
+
+concurrency:
+  group: cut-pin-bumps
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      new-sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Checkout ai-review-prompts (main)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+      - id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  cut:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: [oauth, harper, harper-pro]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout ai-review-prompts (full history)
+        # fetch-depth: 0 so `git diff <old>..<new>` and `git log` in the
+        # script can resolve a caller's current (possibly weeks-old)
+        # pin — a shallow clone would fail that lookup for any caller
+        # more than one push behind.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Mint caller-repo token
+        # Scoped to exactly ${{ matrix.repo }} — never org-wide. No
+        # `continue-on-error`, no PAT fallback: workflow-file edits need
+        # `workflows: write`, which the log-token pattern's PAT fallback
+        # doesn't carry, so a missing grant on the App installation must
+        # fail this leg loudly rather than silently no-op.
+        id: caller-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: ${{ secrets.HARPERFAST_AI_CLIENT_ID }}
+          private-key: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
+          owner: HarperFast
+          repositories: ${{ matrix.repo }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Cut pin-bump PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLER_TOKEN: ${{ steps.caller-token.outputs.token }}
+          CALLER_REPO: HarperFast/${{ matrix.repo }}
+          NEW_SHA: ${{ needs.resolve.outputs.new-sha }}
+          PROMPTS_REPO: ${{ github.repository }}
+        run: node .github/scripts/cut-pin-bumps.mjs
