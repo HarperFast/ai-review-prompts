@@ -279,7 +279,9 @@ export async function main() {
 				oldSha = pin;
 			}
 		}
-		console.log(`${CALLER_REPO}: pins drifted across files (${distinctStale.map((s) => s.slice(0, 7)).join(', ')}); healing all to ${NEW_SHA.slice(0, 7)}`);
+		console.log(
+			`${CALLER_REPO}: pins drifted across files (${distinctStale.map((s) => s.slice(0, 7)).join(', ')}); healing all to ${NEW_SHA.slice(0, 7)}`
+		);
 	}
 
 	const oldShort = oldSha.slice(0, 7);
@@ -301,14 +303,16 @@ export async function main() {
 	} catch {
 		changedPaths = (compare.files ?? []).map((f) => f.filename);
 		if (changedPaths.length >= 300) {
-			console.warn(`${CALLER_REPO}: compare API files list hit its 300-entry cap; prompt-file detection may be incomplete`);
+			console.warn(
+				`${CALLER_REPO}: compare API files list hit its 300-entry cap; prompt-file detection may be incomplete`
+			);
 		}
-		console.warn(`${CALLER_REPO}: local git could not diff ${oldSha.slice(0, 7)}..${NEW_SHA.slice(0, 7)}; using compare API file list (${changedPaths.length} paths)`);
+		console.warn(
+			`${CALLER_REPO}: local git could not diff ${oldSha.slice(0, 7)}..${NEW_SHA.slice(0, 7)}; using compare API file list (${changedPaths.length} paths)`
+		);
 	}
 	if (changedPaths.length === 0) {
-		throw new Error(
-			`no changed paths between ${oldSha} and ${NEW_SHA}; refusing to cut a pin bump for an empty diff`
-		);
+		throw new Error(`no changed paths between ${oldSha} and ${NEW_SHA}; refusing to cut a pin bump for an empty diff`);
 	}
 
 	const prs = await collectMergedPrs(GH_TOKEN, PROMPTS_REPO, compare.commits);

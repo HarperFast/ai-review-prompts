@@ -125,14 +125,21 @@ test('main() heals a drifted secondary file even when the canonical file is at h
 			return new Response(JSON.stringify({ content: Buffer.from(SAMPLE).toString('base64') }), { status: 200 });
 		}
 		if (u.includes('/compare/')) {
-			return new Response(JSON.stringify({ ahead_by: 5, commits: [], files: [{ filename: '.github/workflows/_claude-mention.yml' }] }), { status: 200 });
+			return new Response(
+				JSON.stringify({ ahead_by: 5, commits: [], files: [{ filename: '.github/workflows/_claude-mention.yml' }] }),
+				{ status: 200 }
+			);
 		}
 		if (u.includes('/git/matching-refs/')) return new Response(JSON.stringify([]), { status: 200 });
-		if (u.endsWith('/repos/HarperFast/oauth')) return new Response(JSON.stringify({ default_branch: 'main' }), { status: 200 });
-		if (u.includes('/git/ref/heads/main')) return new Response(JSON.stringify({ object: { sha: 'basesha' } }), { status: 200 });
-		if (u.includes('/git/commits/basesha')) return new Response(JSON.stringify({ tree: { sha: 'treesha' } }), { status: 200 });
+		if (u.endsWith('/repos/HarperFast/oauth'))
+			return new Response(JSON.stringify({ default_branch: 'main' }), { status: 200 });
+		if (u.includes('/git/ref/heads/main'))
+			return new Response(JSON.stringify({ object: { sha: 'basesha' } }), { status: 200 });
+		if (u.includes('/git/commits/basesha'))
+			return new Response(JSON.stringify({ tree: { sha: 'treesha' } }), { status: 200 });
 		if (u.includes('/git/trees')) return new Response(JSON.stringify({ sha: 'newtree' }), { status: 200 });
-		if (u.includes('/git/commits') && method === 'POST') return new Response(JSON.stringify({ sha: 'newcommit' }), { status: 200 });
+		if (u.includes('/git/commits') && method === 'POST')
+			return new Response(JSON.stringify({ sha: 'newcommit' }), { status: 200 });
 		if (u.includes('/git/refs')) return new Response(JSON.stringify({}), { status: 200 });
 		if (u.includes('/pulls?head=')) return new Response(JSON.stringify([]), { status: 200 });
 		if (u.includes('/pulls') && method === 'POST') return new Response(JSON.stringify({ number: 42 }), { status: 200 });
@@ -152,7 +159,10 @@ test('main() heals a drifted secondary file even when the canonical file is at h
 		delete process.env.NEW_SHA;
 		delete process.env.PROMPTS_DIR;
 	}
-	assert.ok(writes.some((w) => w.includes('/git/') || w.includes('/pulls')), 'drifted secondary still produces a bump');
+	assert.ok(
+		writes.some((w) => w.includes('/git/') || w.includes('/pulls')),
+		'drifted secondary still produces a bump'
+	);
 });
 
 test('buildPrBody reports no prompt-file changes for a workflow-only bump', () => {
