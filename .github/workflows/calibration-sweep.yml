@@ -71,13 +71,34 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - name: Mint repo token for branch/PR creation
+        # Branches and PRs created with github.token get NO workflow
+        # triggers (GitHub suppresses them), which is why calibration PRs
+        # showed "no checks reported". An App installation token makes
+        # the push/PR a normal event, so tests, prettier, and the review
+        # workflows run on every weekly PR — the precondition for the
+        # log-only self-merge below. continue-on-error + `||` fallback:
+        # without the grant, behavior is exactly today's (github.token,
+        # no checks, no self-merge).
+        id: repo-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: ${{ secrets.HARPERFAST_AI_CLIENT_ID }}
+          private-key: ${{ secrets.HARPERFAST_AI_APP_PRIVATE_KEY }}
+          owner: HarperFast
+          repositories: ai-review-prompts
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Checkout ai-review-prompts (main)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: main
           # Full history so the agent can branch/rebase against origin
-          # state; checkout persists github.token credentials, which is
-          # what authenticates the agent's `git push`.
+          # state; the persisted credential authenticates the agent's
+          # `git push` — the App token when minted, github.token otherwise.
+          token: ${{ steps.repo-token.outputs.token || github.token }}
           fetch-depth: 0
 
       - name: Mint ai-review-log token
@@ -167,7 +188,13 @@ jobs:
       - name: Run weekly sweep per CALIBRATION-SWEEP.md
         uses: anthropics/claude-code-action@ef50f123a3a9be95b60040d042717517407c7256 # v1.0.110
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.repo-token.outputs.token || github.token }}
+          # 'app' => the PR will carry checks and may self-merge when
+          # log-only; 'default' => no checks will run, never self-merge.
+          PR_TOKEN_KIND: ${{ steps.repo-token.outputs.token != '' && 'app' || 'default' }}
+          # Comma-separated GitHub logins paged on prompt-edit weeks
+          # (repo variable CALIBRATION_REVIEWERS). Empty => warning only.
+          CALIBRATION_REVIEWERS: ${{ vars.CALIBRATION_REVIEWERS }}
           WEEK: ${{ env.WEEK }}
           CALIB_DATA: ${{ env.CALIB_DATA }}
         with:
@@ -175,7 +202,7 @@ jobs:
           # Explicit token skips the GitHub-App token exchange (the
           # Claude Code app isn't a prerequisite this way) — same
           # pattern as ai-review-log's triage-assist.yml.
-          github_token: ${{ github.token }}
+          github_token: ${{ steps.repo-token.outputs.token || github.token }}
           prompt: |
             Read CALIBRATION-SWEEP.md at the root of this checkout and
             execute it exactly. The checkout is HarperFast/ai-review-prompts
@@ -184,6 +211,9 @@ jobs:
             author as "calibration-sweep[bot] <noreply@github.com>" before
             committing.
           claude_args: |
-            --model claude-opus-5
+            --model claude-opus-5-5
+            # Opus 5.5 defaults to medium effort (Opus 5 defaulted to high);
+            # pin the judgment job at high explicitly.
+            --effort high
             --max-turns 200
-            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(date:*),Bash(jq:*),Bash(ls:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git config:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git branch:*),Bash(git fetch:*),Bash(git ls-remote:*),Bash(git rev-parse:*),Bash(git show:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*),Bash(gh pr edit:*)"
+            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(date:*),Bash(jq:*),Bash(ls:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git config:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git branch:*),Bash(git fetch:*),Bash(git ls-remote:*),Bash(git rev-parse:*),Bash(git show:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*),Bash(gh pr edit:*),Bash(gh pr checks:*),Bash(gh pr merge:*),Bash(gh pr comment:*)"

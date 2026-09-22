@@ -124,7 +124,22 @@ d. If no PR exists yet: `gh pr create` into `main` titled
    pin-bump PR rolls the new SHA out to them. End the description with
    `<!-- weekly-calibration -->` followed by
    `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-e. Do NOT merge and do NOT enable auto-merge.
+e. Merge policy — decided by the PR's changed files
+   (`git diff --name-only origin/main...HEAD`) and by `$PR_TOKEN_KIND`:
+   * **Log-only week** (only `CALIBRATION.md` changed) AND
+     `$PR_TOKEN_KIND` is `app`: run `gh pr checks <n> --watch --fail-fast`.
+     All checks pass → `gh pr merge <n> --squash --delete-branch`. Any
+     check fails → leave the PR open and `gh pr comment` naming the
+     failed check; a red calibration PR is a real signal. If `gh pr
+     checks` reports NO checks at all, do NOT merge — that means the PR
+     was not App-created and nothing gated it; fall through to paging.
+   * **Prompt-edit week** (any layer file changed), or `$PR_TOKEN_KIND`
+     is `default`: NEVER merge. Page the humans: if
+     `$CALIBRATION_REVIEWERS` is non-empty, `gh pr edit <n>
+     --add-reviewer <each login>`; if empty, `gh pr comment` stating that
+     no reviewer is configured (repo variable `CALIBRATION_REVIEWERS`).
+   Reviewer-steering content (the prompt layers) always gets a human;
+   the log entry alone does not need one.
 
 ### Dated caveat — the 2026-09-18 backlog catch-up cohort
 
@@ -138,9 +153,20 @@ from pattern floors — their runs span months of prompt refs and say nothing
 about the current week. A maintainer deletes this caveat once an entry has handled it (the sweep
 agent itself never edits this file — see Constraints).
 
+### Dated note — 2026-09-22 model transition
+
+All Claude legs move to `claude-opus-5-5` (reviews were `claude-sonnet-5`;
+issue-to-pr's bug/test lane, this sweep, and ai-review-log's triage were
+`claude-opus-5`), each at explicit effort because Opus 5.5 defaults to
+`medium`. Reviews switch when the caller pin-bump PRs land, so the
+transition week is split across models: keep the per-model rows separate,
+attribute verdict-mix deltas to the model before the prompt ref, and do not
+propose prompt edits from a mixed-model week unless a pattern holds within
+one model's rows. A maintainer deletes this note once an entry has handled it.
+
 ## Constraints
 
-* Exactly one open PR per week; never merge it, never auto-merge.
+* Exactly one PR per week. Self-merge ONLY a log-only week whose checks passed on an App-created PR; a prompt-edit week always waits for a human.
 * Conservative on prompt edits — log-only weeks are expected and fine.
 * Never ask questions; if any read/write fails, proceed with what you
   have and STILL open (or update) the PR.
