@@ -127,17 +127,19 @@ d. If no PR exists yet: `gh pr create` into `main` titled
 e. Merge policy — decided by the PR's changed files
    (`git diff --name-only origin/main...HEAD`) and by `$PR_TOKEN_KIND`:
    * **Log-only week** (only `CALIBRATION.md` changed) AND
-     `$PR_TOKEN_KIND` is `app`: run `gh pr checks <n> --watch --fail-fast`.
-     All checks pass → `gh pr merge <n> --squash --delete-branch`. Any
+     `$PR_TOKEN_KIND` is `app`: run `gh pr checks --watch --fail-fast`
+     (the checkout is on the PR branch, so no PR number is needed).
+     All checks pass → `gh pr merge --squash --delete-branch`. Any
      check fails → leave the PR open and `gh pr comment` naming the
      failed check; a red calibration PR is a real signal. If `gh pr
      checks` reports NO checks at all, do NOT merge — that means the PR
      was not App-created and nothing gated it; fall through to paging.
    * **Prompt-edit week** (any layer file changed), or `$PR_TOKEN_KIND`
      is `default`: NEVER merge. Page the humans: if
-     `$CALIBRATION_REVIEWERS` is non-empty, `gh pr edit <n>
-     --add-reviewer <each login>`; if empty, `gh pr comment` stating that
-     no reviewer is configured (repo variable `CALIBRATION_REVIEWERS`).
+     `$CALIBRATION_REVIEWERS` is non-empty, one call —
+     `gh pr edit --add-reviewer "$CALIBRATION_REVIEWERS"` (comma list is
+     accepted as-is); if empty, `gh pr comment` stating that no reviewer
+     is configured (repo variable `CALIBRATION_REVIEWERS`).
    Reviewer-steering content (the prompt layers) always gets a human;
    the log entry alone does not need one.
 
