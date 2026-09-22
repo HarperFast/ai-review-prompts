@@ -194,9 +194,9 @@ jobs:
       # edits. Sub-task agents still default to Haiku regardless
       # (claude-code-action's own default), so exploration delegated
       # via the Task tool stays cheap no matter which main-loop model
-      # is selected here. `claude-opus-5` is the bare model alias —
+      # is selected here. `claude-opus-5-5` is the bare model alias —
       # no date suffix.
-      AGENT_MODEL: ${{ (endsWith(github.event.label.name, ':bug') || endsWith(github.event.label.name, ':test')) && 'claude-opus-5' || 'claude-sonnet-5' }}
+      AGENT_MODEL: ${{ (endsWith(github.event.label.name, ':bug') || endsWith(github.event.label.name, ':test')) && 'claude-opus-5-5' || 'claude-sonnet-5' }}
     steps:
       - name: Checkout
         # Default shallow fetch (depth 1). The agent can commit and push
