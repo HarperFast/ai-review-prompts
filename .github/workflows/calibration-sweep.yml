@@ -165,7 +165,7 @@ jobs:
           for f in "$D"/*.json; do printf '  %s: %s items\n' "$(basename "$f")" "$(jq 'length' "$f")"; done
 
       - name: Run weekly sweep per CALIBRATION-SWEEP.md
-        uses: anthropics/claude-code-action@ef50f123a3a9be95b60040d042717517407c7256 # v1.0.110
+        uses: anthropics/claude-code-action@8cf3482550831fb35a4fc3fbf7ca139cf8028b4c # v1.0.233
         env:
           GH_TOKEN: ${{ github.token }}
           WEEK: ${{ env.WEEK }}
