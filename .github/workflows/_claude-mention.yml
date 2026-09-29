@@ -255,8 +255,8 @@ jobs:
             ${{ inputs.effort != '' && format('--effort {0}', inputs.effort) || '' }}
             # `--allowedTools` is enforced: in a non-interactive run
             # (claude-code-action v1.0.233) any tool or Bash command not
-            # listed below is denied and shows up in the run result's
-            # `permission_denials`. It is still not the security
+            # listed below, other than the action's always-included GitHub
+            # tools, is denied and shows up in `permission_denials`. It is still not the security
             # boundary — the listed `Write`/`Edit` and build commands
             # are broad enough to misuse.
             #
@@ -284,7 +284,7 @@ jobs:
             # bounded by the containment bullets above, not by the
             # allowlist.
             #
-            # Notable absences in spirit (containment is elsewhere):
+            # Notable absences (why each is left out):
             #   * `Bash(npx:*)` — would let an injected instruction
             #     run arbitrary published packages. Containment:
             #     runner ephemerality + token scope.
