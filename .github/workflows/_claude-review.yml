@@ -384,7 +384,7 @@ jobs:
 
       - name: Claude review
         id: claude-review
-        uses: anthropics/claude-code-action@ef50f123a3a9be95b60040d042717517407c7256 # v1.0.110
+        uses: anthropics/claude-code-action@8cf3482550831fb35a4fc3fbf7ca139cf8028b4c # v1.0.233
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Admit the issue-to-PR bot's PRs. The auth-gate's
