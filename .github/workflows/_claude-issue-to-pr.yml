@@ -250,9 +250,9 @@ jobs:
             # `--allowedTools` is enforced: in a non-interactive run
             # (claude-code-action v1.0.233) any tool or Bash command not
             # listed below, other than the action's always-included GitHub
-            # tools, is denied and shows up in `permission_denials`. It is still not the security
-            # boundary — the listed `Write`/`Edit` and build commands
-            # are broad enough to misuse.
+            # tools, is denied and shows up in `permission_denials`.
+            # It is still not the security boundary — the listed
+            # `Write`/`Edit` and build commands are broad enough to misuse.
             #
             # Real containment for this workflow (issue-to-PR mode
             # does AUTHORING work — branch creation, file edits,

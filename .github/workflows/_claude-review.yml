@@ -400,9 +400,9 @@ jobs:
             # `--allowedTools` is enforced: in a non-interactive run
             # (claude-code-action v1.0.233) any tool or Bash command not
             # listed below, other than the action's always-included GitHub
-            # tools, is denied and shows up in `permission_denials`. It is still not the security
-            # boundary — allowed entries such as `Bash(gh api:*)` are
-            # broad enough to misuse.
+            # tools, is denied and shows up in `permission_denials`.
+            # It is still not the security boundary — allowed entries
+            # such as `Bash(gh api:*)` are broad enough to misuse.
             #
             # Real containment for this workflow:
             #   * Token scope (`pull-requests: write`, `contents: read`,
