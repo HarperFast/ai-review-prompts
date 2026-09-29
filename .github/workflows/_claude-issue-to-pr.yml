@@ -247,16 +247,12 @@ jobs:
             --model ${{ env.AGENT_MODEL }}
             --max-turns ${{ inputs.max-turns }}
             ${{ inputs.effort != '' && format('--effort {0}', inputs.effort) || '' }}
-            # `--allowedTools` is convenience pre-approval, not a
-            # security boundary. Per claude-code-action's
-            # `docs/configuration.md` (v1.0.110): "The base GitHub
-            # tools are always included. Use `--allowedTools` to add
-            # additional tools, and `--disallowedTools` to prevent
-            # specific tools from being used." Tools NOT listed below
-            # will still execute — in CI's non-interactive mode (no
-            # `canUseTool` callback set by claude-code-action), the
-            # SDK's `default` permission mode falls through to
-            # "execute" rather than prompting.
+            # `--allowedTools` is enforced: in a non-interactive run
+            # (claude-code-action v1.0.233) any tool or Bash command not
+            # listed below is denied and shows up in the run result's
+            # `permission_denials`. It is still not the security
+            # boundary — the listed `Write`/`Edit` and build commands
+            # are broad enough to misuse.
             #
             # Real containment for this workflow (issue-to-PR mode
             # does AUTHORING work — branch creation, file edits,

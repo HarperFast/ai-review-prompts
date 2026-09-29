@@ -397,19 +397,12 @@ jobs:
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max-turns }}
             ${{ needs.authorize.outputs.effort != '' && format('--effort {0}', needs.authorize.outputs.effort) || '' }}
-            # `--allowedTools` is convenience pre-approval, not a
-            # security boundary. Per claude-code-action's
-            # `docs/configuration.md` (v1.0.110): "The base GitHub
-            # tools are always included. Use `--allowedTools` to add
-            # additional tools, and `--disallowedTools` to prevent
-            # specific tools from being used." Tools NOT listed below
-            # will still execute — in CI's non-interactive mode (no
-            # `canUseTool` callback set by claude-code-action), the
-            # SDK's `default` permission mode falls through to
-            # "execute" rather than prompting. The entries here
-            # pre-approve specific patterns; that pre-approval is
-            # moot in CI but still useful documentation of the agent's
-            # expected tool surface.
+            # `--allowedTools` is enforced: in a non-interactive run
+            # (claude-code-action v1.0.233) any tool or Bash command not
+            # listed below is denied and shows up in the run result's
+            # `permission_denials`. It is still not the security
+            # boundary — allowed entries such as `Bash(gh api:*)` are
+            # broad enough to misuse.
             #
             # Real containment for this workflow:
             #   * Token scope (`pull-requests: write`, `contents: read`,

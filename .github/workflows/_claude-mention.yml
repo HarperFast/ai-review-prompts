@@ -253,16 +253,12 @@ jobs:
             --model ${{ steps.mention.outputs.model }}
             --max-turns ${{ inputs.max-turns }}
             ${{ inputs.effort != '' && format('--effort {0}', inputs.effort) || '' }}
-            # `--allowedTools` is convenience pre-approval, not a
-            # security boundary. Per claude-code-action's
-            # `docs/configuration.md` (v1.0.110): "The base GitHub
-            # tools are always included. Use `--allowedTools` to add
-            # additional tools, and `--disallowedTools` to prevent
-            # specific tools from being used." Tools NOT listed below
-            # will still execute — in CI's non-interactive mode (no
-            # `canUseTool` callback set by claude-code-action), the
-            # SDK's `default` permission mode falls through to
-            # "execute" rather than prompting.
+            # `--allowedTools` is enforced: in a non-interactive run
+            # (claude-code-action v1.0.233) any tool or Bash command not
+            # listed below is denied and shows up in the run result's
+            # `permission_denials`. It is still not the security
+            # boundary — the listed `Write`/`Edit` and build commands
+            # are broad enough to misuse.
             #
             # Real containment for this workflow (mention mode does
             # AUTHORING work — file edits, commits, pushes — so the
@@ -281,13 +277,12 @@ jobs:
             #     end.
             #   * Prompt-injection guards in the prompt itself.
             #
-            # The "deliberately absent / tightened" entries below are
-            # PROMPT-LEVEL discipline, not allowlist enforcement. They
-            # document our intent for the agent and the expected
-            # surface; an injected instruction that ran (e.g.)
-            # `Bash(npx malicious)` would still execute, and the
-            # damage is bounded by the containment bullets above
-            # rather than by the allowlist.
+            # The absences below are enforced (an unlisted command is
+            # denied), but an injected instruction can still reach the
+            # same effect through listed entries — e.g. `Write` on a
+            # file an allowed command then runs — so the damage is
+            # bounded by the containment bullets above, not by the
+            # allowlist.
             #
             # Notable absences in spirit (containment is elsewhere):
             #   * `Bash(npx:*)` — would let an injected instruction
