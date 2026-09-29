@@ -282,12 +282,12 @@ jobs:
             #     `.npmrc` and/or defer installs to a separate CI job
             #     for actual enforcement.
             #
-            # Bun entries are present unconditionally (additive
-            # pre-approval is harmless; the bun binary just isn't on
+            # Bun entries are present unconditionally (listing
+            # them is harmless; the bun binary just isn't on
             # PATH for runs that don't set `setup-bun: true`).
             #
             # The read-only `gh` lookups (`gh pr list`, `gh search
-            # prs`, `gh search issues`) are pre-approved so an issue
+            # prs`, `gh search issues`) are listed so an issue
             # that references PRs/other issues doesn't burn a turn on
             # a denied "list the open PRs" call and fall back to
             # viewing each one individually.

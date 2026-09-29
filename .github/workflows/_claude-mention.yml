@@ -277,13 +277,6 @@ jobs:
             #     end.
             #   * Prompt-injection guards in the prompt itself.
             #
-            # The absences below are enforced (an unlisted command is
-            # denied), but an injected instruction can still reach the
-            # same effect through listed entries — e.g. `Write` on a
-            # file an allowed command then runs — so the damage is
-            # bounded by the containment bullets above, not by the
-            # allowlist.
-            #
             # Notable absences (why each is left out):
             #   * `Bash(npx:*)` — would let an injected instruction
             #     run arbitrary published packages. Containment:
@@ -296,8 +289,8 @@ jobs:
             #     `.npmrc` and/or defer installs to a separate CI job
             #     for actual enforcement.
             #
-            # Bun entries are present unconditionally (additive
-            # pre-approval is harmless; the bun binary just isn't on
+            # Bun entries are present unconditionally (listing
+            # them is harmless; the bun binary just isn't on
             # PATH for runs that don't set `setup-bun: true`).
             --allowedTools "Read,Write,Edit,Grep,Glob,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checkout:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(git:*),Bash(mkdir:*),Bash(mv:*),Bash(cp:*),Bash(ls:*),Bash(cat:*),Bash(npm install),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(bun install:*),Bash(bun run:*),Bash(bun test:*)"
           # In agent mode the action can use the triggering comment as

@@ -46,7 +46,9 @@ dismissed), `missed`. See `judge-prompt.md` for the judging contract.
 
 `evals/run-eval.sh` prints a `results.tsv`; commit a snapshot as
 `evals/baseline.tsv` to turn later runs into a regression gate
-(`caught` → anything else fails). The **first full-corpus run** also
+(`caught` → anything else fails). The baseline has no model column: when
+the default model changes, run once against the old snapshot to see what
+the switch costs, then re-record. The **first full-corpus run** also
 answers a standing question for free: how many of the historical misses
 do the current rules (post-#73/#80) already catch?
 
