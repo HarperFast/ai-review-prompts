@@ -15,6 +15,8 @@ For the security model and threat analysis, see the [README's Security section](
 
 If `CLAUDE_ALWAYS_ON` is unset, Claude review is **opt-in only** — it runs solely when a maintainer applies the `claude-review` label (see "Opting in" and "Reviewers & the always-on toggle" below). HarperFast core repos set `CLAUDE_ALWAYS_ON=true`, so auto-review is the norm there.
 
+**Model:** Opus 5.5 by default (the reusable workflow's `model` input overrides it), with reasoning effort scaled to the diff size — larger diffs cost more per review.
+
 **What happens:** Claude reads the PR, applies the layered review scope (universal + Harper + repo-type), and posts:
 
 - **`No blockers found.`** when nothing gates the merge — a one-sentence summary (the "what I traced" tracing goes to the ai-review-log issue, not the PR).

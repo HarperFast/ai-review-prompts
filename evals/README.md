@@ -22,11 +22,11 @@ repos; this public repo holds only the harness).
 ## Usage
 
 ```bash
-# test your working tree against every fixture (reviewer = harper canary model)
+# test your working tree against every fixture (reviewer = the PR-review model, claude-opus-5-5)
 evals/run-eval.sh
 
-# test a specific ref / the fleet default model / one fixture class
-evals/run-eval.sh --ref 224c2ad --model claude-sonnet-4-6 --fixtures 'oauth-*'
+# test a specific ref / another model / one fixture class
+evals/run-eval.sh --ref 224c2ad --model claude-sonnet-5-5 --fixtures 'oauth-*'
 
 # regression gate against a recorded baseline
 evals/run-eval.sh --baseline evals/baseline.tsv
