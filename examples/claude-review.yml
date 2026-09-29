@@ -205,7 +205,7 @@ jobs:
 
       - name: Claude review
         id: claude-review
-        uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin v1.0.233+ (older releases reject claude-opus-5-5)
+        uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin v1.0.233+ (earlier releases predate the 5.5 models)
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Allow specific bot actors to be reviewed. The job-level `if:` gate
