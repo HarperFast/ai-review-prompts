@@ -168,8 +168,6 @@ jobs:
         uses: anthropics/claude-code-action@8cf3482550831fb35a4fc3fbf7ca139cf8028b4c # v1.0.233
         env:
           GH_TOKEN: ${{ github.token }}
-          # Comma-separated GitHub logins paged on prompt-edit weeks
-          # (repo variable CALIBRATION_REVIEWERS). Empty => a PR comment instead.
           CALIBRATION_REVIEWERS: ${{ vars.CALIBRATION_REVIEWERS }}
           WEEK: ${{ env.WEEK }}
           CALIB_DATA: ${{ env.CALIB_DATA }}

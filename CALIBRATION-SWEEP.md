@@ -129,11 +129,13 @@ e. Do NOT merge and do NOT enable auto-merge. If the PR changes anything
    page the humans in one call — `gh pr edit --add-reviewer
    "$CALIBRATION_REVIEWERS"` (the comma list is accepted as-is) — or, if
    `$CALIBRATION_REVIEWERS` is empty, `gh pr comment` stating that no
-   reviewer is configured (repo variable `CALIBRATION_REVIEWERS`).
+   reviewer is configured (repo variable `CALIBRATION_REVIEWERS`). If the
+   reviewer request fails (e.g. a login without repo access), `gh pr
+   comment` the error so the bad variable is visible.
 
 ### Dated note — the 2026-09 model transition
 
-The Claude legs move to the 5.5 models: PR reviews to `claude-opus-5-5`
+With #103 and this sweep's own bump, the Claude legs move to the 5.5 models: PR reviews to `claude-opus-5-5`
 (were `claude-sonnet-5`); issue-to-pr's bug/test lane, `@claude deep`, this
 sweep and ai-review-log's triage to `claude-opus-5-5` (were `claude-opus-5`);
 the default mention and issue-to-pr lanes to `claude-sonnet-5-5`. Reviews
