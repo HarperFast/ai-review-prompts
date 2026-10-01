@@ -71,11 +71,11 @@ jobs:
           fi
 
           if printf '%s' "$BODY" | grep -Piq '\bdeep\b'; then
-            echo "model=claude-opus-5" >> "$GITHUB_OUTPUT"
-            echo "Selected claude-opus-5 (deep requested)"
+            echo "model=claude-opus-5-5" >> "$GITHUB_OUTPUT"
+            echo "Selected claude-opus-5-5 (deep requested)"
           else
-            echo "model=claude-sonnet-5" >> "$GITHUB_OUTPUT"
-            echo "Selected claude-sonnet-5 (default)"
+            echo "model=claude-sonnet-5-5" >> "$GITHUB_OUTPUT"
+            echo "Selected claude-sonnet-5-5 (default)"
           fi
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
@@ -109,7 +109,7 @@ jobs:
       - name: Claude (agent mode)
         if: steps.mention.outputs.proceed == 'true'
         id: claude-agent
-        uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin
+        uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin v1.0.233+ (earlier releases predate the 5.5 models)
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Note: `allowed_bots:` is not set here because this workflow
