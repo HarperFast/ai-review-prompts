@@ -22,11 +22,11 @@ repos; this public repo holds only the harness).
 ## Usage
 
 ```bash
-# test your working tree against every fixture (reviewer = harper canary model)
+# test your working tree against every fixture (reviewer = the PR-review model, claude-opus-5-5)
 evals/run-eval.sh
 
-# test a specific ref / the fleet default model / one fixture class
-evals/run-eval.sh --ref 224c2ad --model claude-sonnet-4-6 --fixtures 'oauth-*'
+# test a specific ref / another model / one fixture class
+evals/run-eval.sh --ref 224c2ad --model claude-sonnet-5-5 --fixtures 'oauth-*'
 
 # regression gate against a recorded baseline
 evals/run-eval.sh --baseline evals/baseline.tsv
@@ -46,7 +46,9 @@ dismissed), `missed`. See `judge-prompt.md` for the judging contract.
 
 `evals/run-eval.sh` prints a `results.tsv`; commit a snapshot as
 `evals/baseline.tsv` to turn later runs into a regression gate
-(`caught` → anything else fails). The **first full-corpus run** also
+(`caught` → anything else fails). The baseline has no model column: when
+the default model changes, run once against the old snapshot to see what
+the switch costs, then re-record. The **first full-corpus run** also
 answers a standing question for free: how many of the historical misses
 do the current rules (post-#73/#80) already catch?
 
