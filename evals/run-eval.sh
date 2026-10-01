@@ -16,8 +16,8 @@
 #
 #   --ref         prompt ref under test. Default: the checkout this
 #                 script lives in (test your working tree).
-#   --model       reviewer model. Default: claude-sonnet-5 (the harper
-#                 canary; use claude-sonnet-4-6 for the fleet default).
+#   --model       reviewer model. Default: claude-opus-5-5, the model
+#                 PR reviews run on (_claude-review.yml's default).
 #   --judge-model cheap judge. Default: claude-haiku-4-5.
 #   --fixtures    only run fixture ids matching this glob.
 #   --baseline    baseline results file (id: verdict lines). Exit 1 if
@@ -41,7 +41,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 REF=""
-MODEL="claude-sonnet-5"
+MODEL="claude-opus-5-5"
 JUDGE_MODEL="claude-haiku-4-5"
 FIXTURE_GLOB="*"
 BASELINE=""

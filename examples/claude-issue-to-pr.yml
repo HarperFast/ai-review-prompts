@@ -81,7 +81,7 @@ jobs:
 
       - name: Claude (agent mode)
         id: claude-agent
-        uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin
+        uses: anthropics/claude-code-action@<pinned-sha> # TODO: pin v1.0.233+ (earlier releases predate the 5.5 models)
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Note: `allowed_bots:` is not set here because this workflow
@@ -89,7 +89,7 @@ jobs:
           # — not bots opening PRs. See examples/claude-review.yml for why
           # the review workflow needs the allowlist.
           claude_args: |
-            --model claude-sonnet-5
+            --model claude-sonnet-5-5
             --max-turns 100
             # Tool allowlist — keep tight. See the allowlist comment in
             # examples/claude-mention.yml for why `Bash(npx:*)` is absent,

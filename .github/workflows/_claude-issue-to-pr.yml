@@ -194,9 +194,8 @@ jobs:
       # edits. Sub-task agents still default to Haiku regardless
       # (claude-code-action's own default), so exploration delegated
       # via the Task tool stays cheap no matter which main-loop model
-      # is selected here. `claude-opus-5` is the bare model alias —
-      # no date suffix.
-      AGENT_MODEL: ${{ (endsWith(github.event.label.name, ':bug') || endsWith(github.event.label.name, ':test')) && 'claude-opus-5' || 'claude-sonnet-5' }}
+      # is selected here.
+      AGENT_MODEL: ${{ (endsWith(github.event.label.name, ':bug') || endsWith(github.event.label.name, ':test')) && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
     steps:
       - name: Checkout
         # Default shallow fetch (depth 1). The agent can commit and push
@@ -238,7 +237,7 @@ jobs:
 
       - name: Claude (agent mode)
         id: claude-agent
-        uses: anthropics/claude-code-action@ef50f123a3a9be95b60040d042717517407c7256 # v1.0.110
+        uses: anthropics/claude-code-action@8cf3482550831fb35a4fc3fbf7ca139cf8028b4c # v1.0.233
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           show_full_output: true
@@ -248,16 +247,12 @@ jobs:
             --model ${{ env.AGENT_MODEL }}
             --max-turns ${{ inputs.max-turns }}
             ${{ inputs.effort != '' && format('--effort {0}', inputs.effort) || '' }}
-            # `--allowedTools` is convenience pre-approval, not a
-            # security boundary. Per claude-code-action's
-            # `docs/configuration.md` (v1.0.110): "The base GitHub
-            # tools are always included. Use `--allowedTools` to add
-            # additional tools, and `--disallowedTools` to prevent
-            # specific tools from being used." Tools NOT listed below
-            # will still execute — in CI's non-interactive mode (no
-            # `canUseTool` callback set by claude-code-action), the
-            # SDK's `default` permission mode falls through to
-            # "execute" rather than prompting.
+            # `--allowedTools` is enforced: in a non-interactive run
+            # (claude-code-action v1.0.233) any tool or Bash command not
+            # listed below, other than the action's always-included GitHub
+            # tools, is denied and shows up in `permission_denials`.
+            # It is still not the security boundary — the listed
+            # `Write`/`Edit` and build commands are broad enough to misuse.
             #
             # Real containment for this workflow (issue-to-PR mode
             # does AUTHORING work — branch creation, file edits,
@@ -276,7 +271,7 @@ jobs:
             #   * Runner ephemerality.
             #   * Prompt-injection guards in the prompt itself.
             #
-            # Notable absences in spirit (containment is elsewhere):
+            # Notable absences (why each is left out):
             #   * `Bash(npx:*)` — would let an injected instruction
             #     run arbitrary published packages.
             #   * `Bash(npm install)` (no-arg, not `Bash(npm install:*)`) —
@@ -287,12 +282,12 @@ jobs:
             #     `.npmrc` and/or defer installs to a separate CI job
             #     for actual enforcement.
             #
-            # Bun entries are present unconditionally (additive
-            # pre-approval is harmless; the bun binary just isn't on
+            # Bun entries are present unconditionally (listing
+            # them is harmless; the bun binary just isn't on
             # PATH for runs that don't set `setup-bun: true`).
             #
             # The read-only `gh` lookups (`gh pr list`, `gh search
-            # prs`, `gh search issues`) are pre-approved so an issue
+            # prs`, `gh search issues`) are listed so an issue
             # that references PRs/other issues doesn't burn a turn on
             # a denied "list the open PRs" call and fall back to
             # viewing each one individually.

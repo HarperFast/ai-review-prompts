@@ -51,7 +51,8 @@ you to authenticate against ai-review-log yourself. The env var
   (context for how complete the week's signal is).
 
 The env var `WEEK` is the ISO Monday (America/Los_Angeles) of the week
-being summarized.
+being summarized. `CALIBRATION_REVIEWERS` (repo variable, may be empty) is
+a comma list of GitHub logins to page in step 4e.
 
 ## 1. Synthesize the week
 
@@ -124,7 +125,27 @@ d. If no PR exists yet: `gh pr create` into `main` titled
    pin-bump PR rolls the new SHA out to them. End the description with
    `<!-- weekly-calibration -->` followed by
    `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-e. Do NOT merge and do NOT enable auto-merge.
+e. Do NOT merge and do NOT enable auto-merge. If the PR changes anything
+   besides `CALIBRATION.md` (`git diff --name-only origin/main...HEAD`),
+   page the humans in one call — `gh pr edit --add-reviewer
+   "$CALIBRATION_REVIEWERS"` (the comma list is accepted as-is) — or, if
+   `$CALIBRATION_REVIEWERS` is empty, `gh pr comment` stating that no
+   reviewer is configured (repo variable `CALIBRATION_REVIEWERS`). If the
+   reviewer request fails (e.g. a login without repo access), `gh pr
+   comment` the error so the bad variable is visible. On a re-run, skip
+   either comment when an earlier one on the PR already says the same.
+
+### Dated note — the 2026-09 model transition
+
+This sweep runs on `claude-opus-5-5`, and with #103 the other Claude legs move to the 5.5 models: PR reviews to `claude-opus-5-5`
+(were `claude-sonnet-5`); issue-to-pr's bug/test lane, `@claude deep` and
+ai-review-log's triage to `claude-opus-5-5` (were `claude-opus-5`);
+the default mention and issue-to-pr lanes to `claude-sonnet-5-5`. Reviews
+switch when the caller pin-bump PRs land, so the transition week is split
+across models: keep the per-model rows separate, attribute verdict-mix deltas
+to the model before the prompt ref, and do not propose prompt edits from a
+mixed-model week unless a pattern holds within one model's rows. A maintainer
+deletes this note once an entry has handled it.
 
 ### Dated caveat — the 2026-09-18 backlog catch-up cohort
 
