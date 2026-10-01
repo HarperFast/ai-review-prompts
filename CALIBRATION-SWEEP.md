@@ -144,8 +144,13 @@ the default mention and issue-to-pr lanes to `claude-sonnet-5-5`. Reviews
 switch when the caller pin-bump PRs land, so the transition week is split
 across models: keep the per-model rows separate, attribute verdict-mix deltas
 to the model before the prompt ref, and do not propose prompt edits from a
-mixed-model week unless a pattern holds within one model's rows. A maintainer
-deletes this note once an entry has handled it.
+mixed-model week unless a pattern holds within one model's rows. The same
+pin bump also rolls the week-of-09-07 and week-of-09-14 prompt bullets (#96,
+#101), which no caller had seen before that bump, so the boundary carries model
+and prompt changes together: do not read a delta across it as a prompt
+effect. The first clean before/after read on those bullets is the following
+week, within one model's rows. A maintainer deletes this note once an entry
+has handled it.
 
 ### Dated caveat — the 2026-09-18 backlog catch-up cohort
 
