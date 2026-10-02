@@ -31,6 +31,17 @@ New `repo-type` layers land in this repo as they're calibrated against a real re
 
 ## How a consumer workflow composes these
 
+```mermaid
+flowchart LR
+  Caller["Caller repo workflow<br/>uses: …@ pinned SHA"] --> Auth["authorize<br/>(trusted author / label gate)"]
+  Auth --> Layers["Checkout this repo @ same SHA<br/>concatenate REVIEW_LAYERS"]
+  Layers --> Run["claude-code-action<br/>prompt = composed layers + PR diff"]
+  Run --> Out["Review comment on the PR"]
+  Run --> Log["Entry in HarperFast/ai-review-log"]
+  Edit["Layer edit merged to main"] --> Bump["Pin-bump PR in each caller"]
+  Bump -->|human merges| Caller
+```
+
 At the job level, declare the layers that apply via an env var:
 
 ```yaml
