@@ -128,6 +128,7 @@ Pre-existing gaps are NOT findings. "This function has no tests" on code the PR 
 - Broken public API contracts (signature / return shape / error type changed without a migration path)
 - Missing tests the PR itself should have added — per the scoping rules in the Testing section above
 - Documentation drift that would actively mislead integrators
+- Per-operation work added to a hot path with no measurement in the PR — the boundary with the Suggestion tier is drawn under **Performance on a hot path** below; an estimate that the cost is negligible is not a measurement
 
 **What is NOT a blocker** (do not post these, even if they're true):
 
@@ -146,7 +147,7 @@ Pre-existing gaps are NOT findings. "This function has no tests" on code the PR 
 
 A concrete, actionable improvement *on a line in this diff* that a maintainer would plausibly take, with a named benefit, but that does not gate the merge. **It must propose a specific change** — if the code would stay exactly as written after the author reads it, it was never a suggestion. Admit only:
 
-- **Performance on a hot path** — an avoidable O(n²), a redundant per-record allocation, a sync call in an async commit/replication/request path — with the cost named.
+- **Performance on a hot path** — an avoidable O(n²), a redundant per-record allocation, a sync call in an async commit/replication/request path — with the cost named. This tier is for an _avoidable_ cost on a line the diff adds. It is **not** the tier for a change that alters the per-operation work of a hot path (a lock, an allocation or copy, a sync call, a re-check on a get/put/iterator/commit/request/replication path) with no measurement in the PR: that is a finding at the severity of the regression it could be, and only a measurement — not an estimate from either side — settles it. The repo-type layers name which paths count for their repo.
 - **Reuse over reimplementation** — the diff hand-rolls something an existing dep or `utility/` / `shared/` helper already provides (semver math, path joining, retry/backoff, identity/auth helpers).
 - **A maintainability issue with a concrete consequence** — a foot-gun the next caller will hit, a duplicated invariant that will drift. Not taste.
 
