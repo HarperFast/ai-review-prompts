@@ -32,13 +32,16 @@ New `repo-type` layers land in this repo as they're calibrated against a real re
 ## How a consumer workflow composes these
 
 ```mermaid
-flowchart LR
-  Caller["Caller repo workflow<br/>uses: …@ pinned SHA"] --> Auth["authorize<br/>(trusted author / label gate)"]
-  Auth --> Layers["Checkout this repo @ same SHA<br/>concatenate REVIEW_LAYERS"]
-  Layers --> Run["claude-code-action<br/>prompt = composed layers + PR diff"]
-  Run --> Out["Review comment on the PR"]
-  Run --> Log["Entry in HarperFast/ai-review-log"]
-  Edit["Layer edit merged to main"] --> Bump["Pin-bump PR in each caller"]
+flowchart TB
+  Caller["Caller repo workflows<br/>uses: …@ pinned SHA"]
+  Caller --> Review["_claude-review / _gemini-review<br/>(PR opened or updated)"]
+  Caller --> Author["_claude-mention / _claude-issue-to-pr<br/>(@claude, claude-fix:* label)"]
+  Caller --> Validate["_validate-caller-workflows<br/>(all pins on one SHA)"]
+  Review --> Layers["Checkout this repo @ same SHA<br/>concatenate REVIEW_LAYERS"]
+  Layers --> Out["Review comment on the PR"]
+  Layers --> Log["Entry in HarperFast/ai-review-log"]
+  Author --> Work["Edits, commits, PR<br/>(no layers, no log)"]
+  Edit["Layer or workflow change merged to main"] --> Bump["cut-pin-bumps: PR in each caller"]
   Bump -->|human merges| Caller
 ```
 
