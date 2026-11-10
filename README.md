@@ -1,7 +1,7 @@
 # ai-review-prompts
 
 > [!WARNING]
-> **This repository is archived.** It has not been maintained since its author left Harper, and HarperFast no longer runs these review workflows. The contents stay here, read-only, for reference.
+> **This repository is archived.** We no longer use these for AI reviews. We've moved AI review source to our dispatch tool and internal skills.
 
 Layered prompt content for AI-powered code review on Harper-ecosystem repositories. Consumed by GitHub Actions workflows that run [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action) (or equivalent) against pull requests.
 
