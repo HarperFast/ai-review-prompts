@@ -1,5 +1,8 @@
 # ai-review-prompts
 
+> [!WARNING]
+> **This repository is archived.** We no longer use these for AI reviews. We've moved AI review source to our dispatch tool and internal skills.
+
 Layered prompt content for AI-powered code review on Harper-ecosystem repositories. Consumed by GitHub Actions workflows that run [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action) (or equivalent) against pull requests.
 
 > **Using the workflows in a repo that has them installed?** See [`USAGE.md`](./USAGE.md) for the day-to-day reference — what `@claude` can do, what labels trigger what, how to get a PR reviewed.
